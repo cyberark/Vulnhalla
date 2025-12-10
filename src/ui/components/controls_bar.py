@@ -14,6 +14,11 @@ class ControlsBar(Container):
     """
     
     def compose(self) -> ComposeResult:
+        """Compose the controls bar layout.
+
+        Creates the bottom bar with language information, filters,
+        action buttons and keyboard shortcut help text.
+        """
         with Vertical():
             # Language label only
             with Horizontal():

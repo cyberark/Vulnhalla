@@ -46,6 +46,12 @@ def check_dependencies_installed() -> bool:
 
 
 def main():
+    """Run the Vulnhalla setup process.
+
+    This script installs Python dependencies, verifies the CodeQL
+    CLI configuration, installs required CodeQL packs, and prints
+    next steps for running the analysis pipeline.
+    """
     logger.info("Vulnhalla Setup")
     logger.info("=" * 50)
     

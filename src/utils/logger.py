@@ -115,7 +115,22 @@ def setup_logging(
             from datetime import datetime
             
             class JSONFormatter(logging.Formatter):
+                """Formatter that renders log records as JSON strings.
+
+                This formatter is used when JSON logging is enabled. It converts the
+                LogRecord into a JSON object with a timestamp, logger name, level, and
+                message, and can optionally include extra fields such as progress.
+                """
+                
                 def format(self, record):
+                    """Format a LogRecord as a JSON string.
+
+                    Args:
+                        record: The log record to format.
+
+                    Returns:
+                        str: A JSON representation of the log record.
+                    """
                     log_entry = {
                         "timestamp": datetime.utcnow().isoformat(),
                         "level": record.levelname,
@@ -144,7 +159,12 @@ def setup_logging(
         # - INFO: still minimal (message only)
         # - WARNING/ERROR/CRITICAL: full format (timestamp - logger - level - message)
         class LevelBasedFormatter(logging.Formatter):
-            """Formatter that uses minimal format for INFO, simple format for WARNING/ERROR by default."""
+            """Formatter that uses different formats depending on log level.
+
+            INFO messages are rendered in a minimal format (message only),
+            while WARNING/ERROR/CRITICAL messages can use either a simple format
+            (LEVEL - message) or a full format with timestamp and logger name.
+            """
             def __init__(self, full_format, simple_format, datefmt=None, verbose=False):
                 # Initialize with simple format as base (for WARNING/ERROR default behavior)
                 super().__init__(simple_format, datefmt)
@@ -154,6 +174,18 @@ def setup_logging(
                 self._full_formatter = logging.Formatter(full_format, datefmt) if verbose else None
             
             def format(self, record):
+                """Format a LogRecord using level-based formatting.
+
+                INFO records are formatted as the plain message. Higher-severity
+                records use either the simple or full format, depending on the
+                configuration.
+
+                Args:
+                    record: The log record to format.
+
+                Returns:
+                    str: The formatted log message.
+                """
                 # For INFO level, always use minimal format (just the message)
                 if record.levelno == logging.INFO:
                     return record.getMessage()

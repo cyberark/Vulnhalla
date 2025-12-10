@@ -1,3 +1,11 @@
+"""
+Common utility functions for Vulnhalla.
+
+This module provides reusable helpers for file and path handling,
+working with CodeQL database directories, and other small I/O utilities
+that are shared across multiple parts of the project.
+"""
+
 import os
 import zipfile
 import yaml

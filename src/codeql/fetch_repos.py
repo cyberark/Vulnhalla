@@ -151,7 +151,7 @@ def custom_download(url: str, local_filename: str) -> None:
                         file.write(chunk)
                         downloaded_size += len(chunk)
                         
-                        # Update progress every 0.1 seconds to avoid too frequent updates
+                        # Update progress every 0.1 seconds
                         current_time = time.time()
                         if current_time - last_update >= 0.1 or downloaded_size == total_size:
                             progress = (downloaded_size / total_size) * 100 if total_size > 0 else 0

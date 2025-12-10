@@ -100,6 +100,11 @@ class VulnhallaUI(App):
         self._updating_manual_decision_select: bool = False
     
     def compose(self) -> ComposeResult:
+        """Compose the main application layout.
+
+        Builds the overall Textual UI, including the issues list panel,
+        the details panel, and the bottom controls bar.
+        """
         yield Header()
         with Vertical():
             with Horizontal():

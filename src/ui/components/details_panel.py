@@ -14,6 +14,11 @@ class DetailsPanel(Container):
     """
     
     def compose(self) -> ComposeResult:
+        """Compose the issue details panel layout.
+
+        Builds the right-hand panel that shows LLM decisions, metadata,
+        code snippets and the manual decision selector for the selected issue.
+        """
         with Vertical():
             # Scrollable content area
             scrollable_content = ScrollableContainer(id="details-scrollable")

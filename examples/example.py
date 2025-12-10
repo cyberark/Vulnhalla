@@ -28,6 +28,13 @@ logger = get_logger(__name__)
 
 
 def main():
+    """Run an end-to-end example of the Vulnhalla pipeline.
+
+    This function fetches CodeQL databases for two demo
+    repositories, runs CodeQL queries, classifies the findings
+    using the configured LLM provider, writes the results
+    to the output directory, and opens the results UI.
+    """
     # Initialize logging
     setup_logging()
     logger.info("Starting Vulnhalla pipeline... This may take a few minutes.")

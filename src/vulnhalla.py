@@ -1,4 +1,14 @@
 ﻿#!/usr/bin/env python3
+"""
+Core analysis engine for Vulnhalla.
+
+This module coordinates the aggregation of raw CodeQL findings and their
+classification by an LLM. It loads issues from CodeQL result files,
+groups them by issue type, runs LLM-based analysis to decide whether
+each finding is a true positive, false positive, or needs more data,
+and writes structured result files for further inspection (e.g. in the UI).
+"""
+
 import os
 import csv
 import re
