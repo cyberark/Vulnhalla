@@ -18,6 +18,7 @@ from src.utils.llm_config import load_llm_config, get_model_name
 from src.utils.config_validator import validate_llm_config_dict
 from src.utils.logger import get_logger
 from src.utils.common_functions import read_file_lines_from_zip
+from src.utils.exceptions import CodeQLError, LLMApiError, LLMConfigError
 
 logger = get_logger(__name__)
 
@@ -181,6 +182,9 @@ class LLMAnalyzer:
 
         Args:
             config (Dict, optional): Full configuration dictionary. If not provided, loads from .env file.
+        
+        Raises:
+            LLMConfigError: If configuration is invalid or cannot be loaded.
         """
         try:
             # If config is provided, use it directly
@@ -203,8 +207,12 @@ class LLMAnalyzer:
             self.model = config.get("model", "gpt-4o")
             self.setup_litellm_env()
             
+        except ValueError as e:
+            # Configuration validation errors should be LLMConfigError
+            raise LLMConfigError(f"Invalid LLM configuration: {e}") from e
         except Exception as e:
-            raise RuntimeError(f"Failed to initialize LLM client: {e}")
+            # Other errors (e.g., from load_llm_config) should also be LLMConfigError
+            raise LLMConfigError(f"Failed to initialize LLM client: {e}") from e
     
     def setup_litellm_env(self) -> None:
         """
@@ -293,21 +301,31 @@ class LLMAnalyzer:
 
         Returns:
             Optional[Dict[str, str]]: The matching function row as a dict, or None if not found.
+        
+        Raises:
+            CodeQLError: If function tree file cannot be read (not found, permission denied, etc.).
         """
         keys = ["function_name", "file", "start_line", "function_id", "end_line", "caller_id"]
-        with open(function_tree_file, "r", encoding="utf-8") as f:
-            while True:
-                function = f.readline()
-                if not function:
-                    break
-                if file in function:
-                    row = re.split(r',(?=(?:[^"]*"[^"]*")*[^"]*$)', function)
-                    row_dict = dict(zip(keys, row))
-                    if row_dict and row_dict["start_line"] and row_dict["end_line"]:
-                        start = int(row_dict["start_line"])
-                        end = int(row_dict["end_line"])
-                        if start <= line <= end:
-                            return row_dict
+        try:
+            with open(function_tree_file, "r", encoding="utf-8") as f:
+                while True:
+                    function = f.readline()
+                    if not function:
+                        break
+                    if file in function:
+                        row = re.split(r',(?=(?:[^"]*"[^"]*")*[^"]*$)', function)
+                        row_dict = dict(zip(keys, row))
+                        if row_dict and row_dict["start_line"] and row_dict["end_line"]:
+                            start = int(row_dict["start_line"])
+                            end = int(row_dict["end_line"])
+                            if start <= line <= end:
+                                return row_dict
+        except FileNotFoundError as e:
+            raise CodeQLError(f"Function tree file not found: {function_tree_file}") from e
+        except PermissionError as e:
+            raise CodeQLError(f"Permission denied reading function tree file: {function_tree_file}") from e
+        except OSError as e:
+            raise CodeQLError(f"OS error while reading function tree file: {function_tree_file}") from e
         return None
 
     def get_function_by_name(
@@ -331,26 +349,36 @@ class LLMAnalyzer:
             Tuple[Union[str, Dict[str, str]], Optional[Dict[str, str]]]:
                 - The found function (dict) or an error message (str).
                 - The "parent function" that references it, if relevant.
+        
+        Raises:
+            CodeQLError: If function tree file cannot be read (not found, permission denied, etc.).
         """
         keys = ["function_name", "file", "start_line", "function_id", "end_line", "caller_id"]
         function_name_only = function_name.split("::")[-1]
 
         for current_function in all_function:
-            with open(function_tree_file, "r", encoding="utf-8") as f:
-                while True:
-                    row = f.readline()
-                    if not row:
-                        break
-                    if current_function["function_id"] in row:
-                        row_split = re.split(r',(?=(?:[^"]*"[^"]*")*[^"]*$)', row)
-                        row_dict = dict(zip(keys, row_split))
-                        if not row_dict:
-                            continue
+            try:
+                with open(function_tree_file, "r", encoding="utf-8") as f:
+                    while True:
+                        row = f.readline()
+                        if not row:
+                            break
+                        if current_function["function_id"] in row:
+                            row_split = re.split(r',(?=(?:[^"]*"[^"]*")*[^"]*$)', row)
+                            row_dict = dict(zip(keys, row_split))
+                            if not row_dict:
+                                continue
 
-                        candidate_name = row_dict["function_name"].replace("\"", "")
-                        if (candidate_name == function_name_only
-                                or (less_strict and function_name_only in candidate_name)):
-                            return row_dict, current_function
+                            candidate_name = row_dict["function_name"].replace("\"", "")
+                            if (candidate_name == function_name_only
+                                    or (less_strict and function_name_only in candidate_name)):
+                                return row_dict, current_function
+            except FileNotFoundError as e:
+                raise CodeQLError(f"Function tree file not found: {function_tree_file}") from e
+            except PermissionError as e:
+                raise CodeQLError(f"Permission denied reading function tree file: {function_tree_file}") from e
+            except OSError as e:
+                raise CodeQLError(f"OS error while reading function tree file: {function_tree_file}") from e
 
         # Try partial matching if less_strict is False
         if not less_strict:
@@ -381,25 +409,35 @@ class LLMAnalyzer:
             Union[str, Dict[str, str]]:
                 - A dict with 'macro_name' and 'body' if found,
                 - or an error message string if not found.
+        
+        Raises:
+            CodeQLError: If Macros CSV file cannot be read (not found, permission denied, etc.).
         """
         macro_file = os.path.join(curr_db, "Macros.csv")
         keys = ["macro_name", "body"]
 
-        with open(macro_file, "r", encoding='utf-8') as f:
-            while True:
-                macro = f.readline()
-                if not macro:
-                    break
-                if macro_name in macro:
-                    row = re.split(r',(?=(?:[^"]*"[^"]*")*[^"]*$)', macro)
-                    row_dict = dict(zip(keys, row))
-                    if not row_dict:
-                        continue
+        try:
+            with open(macro_file, "r", encoding='utf-8') as f:
+                while True:
+                    macro = f.readline()
+                    if not macro:
+                        break
+                    if macro_name in macro:
+                        row = re.split(r',(?=(?:[^"]*"[^"]*")*[^"]*$)', macro)
+                        row_dict = dict(zip(keys, row))
+                        if not row_dict:
+                            continue
 
-                    actual_name = row_dict["macro_name"].replace("\"", "")
-                    if (actual_name == macro_name
-                            or (less_strict and macro_name in actual_name)):
-                        return row_dict
+                        actual_name = row_dict["macro_name"].replace("\"", "")
+                        if (actual_name == macro_name
+                                or (less_strict and macro_name in actual_name)):
+                            return row_dict
+        except FileNotFoundError as e:
+            raise CodeQLError(f"Macros CSV file not found: {macro_file}") from e
+        except PermissionError as e:
+            raise CodeQLError(f"Permission denied reading Macros CSV: {macro_file}") from e
+        except OSError as e:
+            raise CodeQLError(f"OS error while reading Macros CSV: {macro_file}") from e
 
         if not less_strict:
             return self.get_macro(curr_db, macro_name, True)
@@ -428,26 +466,36 @@ class LLMAnalyzer:
             Union[str, Dict[str, str]]:
                 - A dict with ['global_var_name','file','start_line','end_line'] if found,
                 - or an error message string if not found.
+        
+        Raises:
+            CodeQLError: If GlobalVars CSV file cannot be read (not found, permission denied, etc.).
         """
         global_var_file = os.path.join(curr_db, "GlobalVars.csv")
         keys = ["global_var_name", "file", "start_line", "end_line"]
         var_name_only = global_var_name.split("::")[-1]
 
-        with open(global_var_file, "r", encoding="utf-8") as f:
-            while True:
-                line = f.readline()
-                if not line:
-                    break
-                if var_name_only in line:
-                    data = re.split(r',(?=(?:[^"]*"[^"]*")*[^"]*$)', line)
-                    data_dict = dict(zip(keys, data))
-                    if not data_dict:
-                        continue
+        try:
+            with open(global_var_file, "r", encoding="utf-8") as f:
+                while True:
+                    line = f.readline()
+                    if not line:
+                        break
+                    if var_name_only in line:
+                        data = re.split(r',(?=(?:[^"]*"[^"]*")*[^"]*$)', line)
+                        data_dict = dict(zip(keys, data))
+                        if not data_dict:
+                            continue
 
-                    actual_name = data_dict["global_var_name"].replace("\"", "")
-                    if (actual_name == var_name_only
-                            or (less_strict and var_name_only in actual_name)):
-                        return data_dict
+                        actual_name = data_dict["global_var_name"].replace("\"", "")
+                        if (actual_name == var_name_only
+                                or (less_strict and var_name_only in actual_name)):
+                            return data_dict
+        except FileNotFoundError as e:
+            raise CodeQLError(f"GlobalVars CSV file not found: {global_var_file}") from e
+        except PermissionError as e:
+            raise CodeQLError(f"Permission denied reading GlobalVars CSV: {global_var_file}") from e
+        except OSError as e:
+            raise CodeQLError(f"OS error while reading GlobalVars CSV: {global_var_file}") from e
 
         if not less_strict:
             return self.get_global_var(curr_db, global_var_name, True)
@@ -476,31 +524,41 @@ class LLMAnalyzer:
             Union[str, Dict[str, str]]:
                 - A dict with keys ['type','class_name','file','start_line','end_line','simple_name']
                 - or an error message string if not found.
+        
+        Raises:
+            CodeQLError: If Classes CSV file cannot be read (not found, permission denied, etc.).
         """
         classes_file = os.path.join(curr_db, "Classes.csv")
         keys = ["type", "class_name", "file", "start_line", "end_line", "simple_name"]
         class_name_only = class_name.split("::")[-1]
 
-        with open(classes_file, "r", encoding="utf-8") as f:
-            while True:
-                row = f.readline()
-                if not row:
-                    break
-                if class_name_only in row:
-                    row_split = re.split(r',(?=(?:[^"]*"[^"]*")*[^"]*$)', row)
-                    row_dict = dict(zip(keys, row_split))
-                    if not row_dict:
-                        continue
+        try:
+            with open(classes_file, "r", encoding="utf-8") as f:
+                while True:
+                    row = f.readline()
+                    if not row:
+                        break
+                    if class_name_only in row:
+                        row_split = re.split(r',(?=(?:[^"]*"[^"]*")*[^"]*$)', row)
+                        row_dict = dict(zip(keys, row_split))
+                        if not row_dict:
+                            continue
 
-                    actual_class = row_dict["class_name"].replace("\"", "")
-                    simple_class = row_dict["simple_name"].replace("\"", "")
-                    if (
-                        actual_class == class_name_only
-                        or simple_class == class_name_only
-                        or (less_strict and class_name_only in actual_class)
-                        or (less_strict and class_name_only in simple_class)
-                    ):
-                        return row_dict
+                        actual_class = row_dict["class_name"].replace("\"", "")
+                        simple_class = row_dict["simple_name"].replace("\"", "")
+                        if (
+                            actual_class == class_name_only
+                            or simple_class == class_name_only
+                            or (less_strict and class_name_only in actual_class)
+                            or (less_strict and class_name_only in simple_class)
+                        ):
+                            return row_dict
+        except FileNotFoundError as e:
+            raise CodeQLError(f"Classes CSV file not found: {classes_file}") from e
+        except PermissionError as e:
+            raise CodeQLError(f"Permission denied reading Classes CSV: {classes_file}") from e
+        except OSError as e:
+            raise CodeQLError(f"OS error while reading Classes CSV: {classes_file}") from e
 
         if not less_strict:
             return self.get_class(curr_db, class_name, True)
@@ -523,22 +581,32 @@ class LLMAnalyzer:
             Union[str, Dict[str, str]]:
                 - Dict describing the caller if found
                 - or an error string if the caller wasn't found.
+        
+        Raises:
+            CodeQLError: If function tree file cannot be read (not found, permission denied, etc.).
         """
         keys = ["function_name", "file", "start_line", "function_id", "end_line", "caller_id"]
         caller_id = current_function["caller_id"].replace("\"", "").strip()
 
-        with open(function_tree_file, "r", encoding="utf-8") as f:
-            while True:
-                line = f.readline()
-                if not line:
-                    break
-                if caller_id in line:
-                    data = re.split(r',(?=(?:[^"]*"[^"]*")*[^"]*$)', line)
-                    data_dict = dict(zip(keys, data))
-                    if not data_dict:
-                        continue
-                    if data_dict["function_id"].replace("\"", "").strip() == caller_id:
-                        return data_dict
+        try:
+            with open(function_tree_file, "r", encoding="utf-8") as f:
+                while True:
+                    line = f.readline()
+                    if not line:
+                        break
+                    if caller_id in line:
+                        data = re.split(r',(?=(?:[^"]*"[^"]*")*[^"]*$)', line)
+                        data_dict = dict(zip(keys, data))
+                        if not data_dict:
+                            continue
+                        if data_dict["function_id"].replace("\"", "").strip() == caller_id:
+                            return data_dict
+        except FileNotFoundError as e:
+            raise CodeQLError(f"Function tree file not found: {function_tree_file}") from e
+        except PermissionError as e:
+            raise CodeQLError(f"Permission denied reading function tree file: {function_tree_file}") from e
+        except OSError as e:
+            raise CodeQLError(f"OS error while reading function tree file: {function_tree_file}") from e
 
         # Fallback if 'caller_id' is in format file:line
         maybe_line = caller_id.split(":")
@@ -567,6 +635,10 @@ class LLMAnalyzer:
 
         Returns:
             str: The code snippet, or an error message if no dictionary was provided.
+        
+        Raises:
+            CodeQLError: If ZIP file cannot be read or file not found in archive.
+                This exception is raised by `read_file_lines_from_zip()` and propagated here.
         """
         if not isinstance(current_function, dict):
             return str(current_function)
@@ -600,6 +672,9 @@ class LLMAnalyzer:
 
         Returns:
             Dict[str, Any]: The LLM response object from `self.client`.
+        
+        Raises:
+            LLMApiError: If LLM API call fails (rate limits, timeouts, auth failures, etc.).
         """
         args_prompt = (
             "Given caller function and callee function.\n"
@@ -615,11 +690,23 @@ class LLMAnalyzer:
         # Use the main model from config
         model_name = self.model if self.model else "gpt-4o"
         
-        response = litellm.completion(
-            model=model_name,
-            messages=[{"role": "user", "content": args_prompt}]
-        )
-        return response.choices[0].message
+        try:
+            response = litellm.completion(
+                model=model_name,
+                messages=[{"role": "user", "content": args_prompt}]
+            )
+            return response.choices[0].message
+        except litellm.RateLimitError as e:
+            raise LLMApiError(f"Rate limit exceeded for LLM API: {e}") from e
+        except litellm.Timeout as e:
+            raise LLMApiError(f"LLM API request timed out: {e}") from e
+        except litellm.AuthenticationError as e:
+            raise LLMApiError(f"LLM API authentication failed: {e}") from e
+        except litellm.APIError as e:
+            raise LLMApiError(f"LLM API error: {e}") from e
+        except Exception as e:
+            # Catch any other unexpected errors from LiteLLM
+            raise LLMApiError(f"Unexpected error during LLM API call: {e}") from e
 
     def run_llm_security_analysis(
         self,
@@ -649,6 +736,11 @@ class LLMAnalyzer:
             Tuple[List[Dict[str, Any]], str]:
                 - The final conversation messages,
                 - The final content from the LLM's last message.
+        
+        Raises:
+            RuntimeError: If LLM model not initialized.
+            LLMApiError: If LLM API call fails (rate limits, timeouts, auth failures, etc.).
+            CodeQLError: If CodeQL database files cannot be read (from tool calls).
         """
         if not self.model:
             raise RuntimeError("LLM model not initialized. Call init_llm_client() first.")
@@ -665,13 +757,25 @@ class LLMAnalyzer:
 
         while not got_answer:
             # Send the current messages + tools to the LLM endpoint
-            response = litellm.completion(
-                model=self.model,
-                messages=messages,
-                tools=self.tools,
-                temperature=temperature,
-                top_p=top_p
-            )
+            try:
+                response = litellm.completion(
+                    model=self.model,
+                    messages=messages,
+                    tools=self.tools,
+                    temperature=temperature,
+                    top_p=top_p
+                )
+            except litellm.RateLimitError as e:
+                raise LLMApiError(f"Rate limit exceeded for LLM API: {e}") from e
+            except litellm.Timeout as e:
+                raise LLMApiError(f"LLM API request timed out: {e}") from e
+            except litellm.AuthenticationError as e:
+                raise LLMApiError(f"LLM API authentication failed: {e}") from e
+            except litellm.APIError as e:
+                raise LLMApiError(f"LLM API error: {e}") from e
+            except Exception as e:
+                # Catch any other unexpected errors from LiteLLM
+                raise LLMApiError(f"Unexpected error during LLM API call: {e}") from e
 
             content_obj = response.choices[0].message
             messages.append({

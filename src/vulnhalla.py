@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 Core analysis engine for Vulnhalla.
 
@@ -28,6 +28,7 @@ from src.utils.common_functions import (
 from src.llm.llm_analyzer import LLMAnalyzer
 from src.utils.config_validator import validate_and_exit_on_error
 from src.utils.logger import get_logger
+from src.utils.exceptions import VulnhallaError, CodeQLError
 
 logger = get_logger(__name__)
 
@@ -65,6 +66,9 @@ class IssueAnalyzer:
 
         Returns:
             List[Dict[str, str]]: A list of issue objects parsed from CSV rows.
+        
+        Raises:
+            CodeQLError: If file cannot be read (not found, permission denied, etc.).
         """
         field_names = [
             "name", "help", "type", "message",
@@ -72,10 +76,17 @@ class IssueAnalyzer:
             "end_line", "end_offset"
         ]
         issues = []
-        with open(file_name, "r", encoding="utf-8") as f:
-            csv_reader = csv.DictReader(f, fieldnames=field_names)
-            for row in csv_reader:
-                issues.append(row)
+        try:
+            with open(file_name, "r", encoding="utf-8") as f:
+                csv_reader = csv.DictReader(f, fieldnames=field_names)
+                for row in csv_reader:
+                    issues.append(row)
+        except FileNotFoundError as e:
+            raise CodeQLError(f"Issues CSV file not found: {file_name}") from e
+        except PermissionError as e:
+            raise CodeQLError(f"Permission denied reading issues CSV: {file_name}") from e
+        except OSError as e:
+            raise CodeQLError(f"OS error while reading issues CSV: {file_name}") from e
         return issues
 
     def collect_issues_from_databases(self, dbs_folder: str) -> Dict[str, List[Dict[str, str]]]:
@@ -88,8 +99,12 @@ class IssueAnalyzer:
 
         Returns:
             Dict[str, List[Dict[str, str]]]: All issues, grouped by issue name.
+        
+        Raises:
+            CodeQLError: If database folder cannot be accessed or issues cannot be read.
         """
         issues_statistics: Dict[str, List[Dict[str, str]]] = {}
+        # get_all_dbs() raises CodeQLError on errors
         dbs_path = get_all_dbs(dbs_folder)
         for curr_db in dbs_path:
             logger.info("Processing DB: %s", curr_db)
@@ -97,6 +112,7 @@ class IssueAnalyzer:
             issues_file = os.path.join(curr_db, "issues.csv")
 
             if os.path.exists(function_tree_csv) and os.path.exists(issues_file):
+                # parse_issues_csv() raises CodeQLError on errors
                 issues = self.parse_issues_csv(issues_file)
                 for issue in issues:
                     if issue["name"] not in issues_statistics:
@@ -124,31 +140,41 @@ class IssueAnalyzer:
 
         Returns:
             Optional[Dict[str, str]]: The best matching function dictionary, or None if not found.
+        
+        Raises:
+            CodeQLError: If function tree file cannot be read (not found, permission denied, etc.).
         """
         keys = ["function_name", "file", "start_line", "function_id", "end_line", "caller_id"]
         best_function = None
         smallest_range = float('inf')
 
-        with open(function_tree_file, "r", encoding="utf-8") as f:
-            for row in f:
-                if file_path in row:
-                    fields = re.split(r',(?=(?:[^"]*"[^"]*")*[^"]*$)', row.strip())
-                    if len(fields) != len(keys):
-                        continue  # Skip malformed rows
+        try:
+            with open(function_tree_file, "r", encoding="utf-8") as f:
+                for row in f:
+                    if file_path in row:
+                        fields = re.split(r',(?=(?:[^"]*"[^"]*")*[^"]*$)', row.strip())
+                        if len(fields) != len(keys):
+                            continue  # Skip malformed rows
 
-                    function = dict(zip(keys, fields))
-                    try:
-                        start_line = int(function["start_line"])
-                        end_line = int(function["end_line"])
-                    except ValueError:
-                        continue  # Skip if lines aren't integers
+                        function = dict(zip(keys, fields))
+                        try:
+                            start_line = int(function["start_line"])
+                            end_line = int(function["end_line"])
+                        except ValueError:
+                            continue  # Skip if lines aren't integers
 
-                    if start_line <= line <= end_line:
-                        if file_path in function["file"]:
-                            size = end_line - start_line
-                            if size < smallest_range:
-                                best_function = function
-                                smallest_range = size
+                        if start_line <= line <= end_line:
+                            if file_path in function["file"]:
+                                size = end_line - start_line
+                                if size < smallest_range:
+                                    best_function = function
+                                    smallest_range = size
+        except FileNotFoundError as e:
+            raise CodeQLError(f"Function tree file not found: {function_tree_file}") from e
+        except PermissionError as e:
+            raise CodeQLError(f"Permission denied reading function tree file: {function_tree_file}") from e
+        except OSError as e:
+            raise CodeQLError(f"OS error while reading function tree file: {function_tree_file}") from e
 
         return best_function
 
@@ -194,6 +220,9 @@ class IssueAnalyzer:
 
         Returns:
             Callable[[re.Match], str]: A function that can be used with `re.sub`.
+        
+        Note:
+            The returned callback function may raise `CodeQLError` if ZIP file cannot be read.
         """
         def replacement(match):
             variable = match.group(1)
@@ -241,6 +270,9 @@ class IssueAnalyzer:
 
         Returns:
             str: A final prompt string with the template + hints + snippet + code.
+        
+        Raises:
+            VulnhallaError: If template files cannot be read (not found, permission denied, etc.).
         """
         # If language is 'c', many queries are stored under 'cpp'
         lang_folder = "cpp" if self.lang == "c" else self.lang
@@ -285,10 +317,18 @@ class IssueAnalyzer:
 
         Args:
             dirs (List[str]): A list of directory paths to create if missing.
+        
+        Raises:
+            VulnhallaError: If directory creation fails (permission denied, etc.).
         """
         for d in dirs:
             if not os.path.exists(d):
-                os.makedirs(d, exist_ok=True)
+                try:
+                    os.makedirs(d, exist_ok=True)
+                except PermissionError as e:
+                    raise VulnhallaError(f"Permission denied creating directory: {d}") from e
+                except OSError as e:
+                    raise VulnhallaError(f"OS error creating directory: {d}") from e
 
 
     # ----------------------------------------------------------------------
@@ -313,6 +353,9 @@ class IssueAnalyzer:
             current_function (Dict[str, str]): The currently found function dict.
             results_folder (str): Folder path where we store the result files.
             issue_id (int): The numeric ID of the current issue.
+        
+        Raises:
+            VulnhallaError: If file cannot be written (permission denied, etc.).
         """
         raw_data = json.dumps({
             "function_tree_file": function_tree_file,
@@ -381,6 +424,9 @@ class IssueAnalyzer:
 
         Returns:
             str: The extended code snippet, possibly including multiple functions.
+        
+        Raises:
+            CodeQLError: If function tree file or ZIP file cannot be read.
         """
         functions = [current_function]
         for another_func_ref in extra_lines:
@@ -424,6 +470,11 @@ class IssueAnalyzer:
             issue_type (str): The name of the issue type.
             issues_of_type (List[Dict[str, str]]): All issues belonging to that type.
             llm_analyzer (LLMAnalyzer): The LLM analyzer instance to use for queries.
+        
+        Raises:
+            CodeQLError: If database files cannot be read (YAML, ZIP, CSV, etc.).
+            VulnhallaError: If result files cannot be written.
+            LLMError: If LLM analysis fails.
         """
         results_folder = os.path.join("output/results", self.lang, issue_type.replace(" ", "_").replace("/", "-"))
         self.ensure_directories_exist([results_folder])
@@ -535,6 +586,11 @@ class IssueAnalyzer:
         3. Parses each DB's issues.csv, aggregates them by issue type.
         4. Asks the LLM for each issue's snippet context, saving final results
            in various directory structures.
+        
+        Raises:
+            CodeQLError: If database files cannot be accessed or read.
+            VulnhallaError: If directory creation or file writing fails.
+            LLMError: If LLM initialization or analysis fails.
         """
         # Validate configuration before starting
         if self.config is None:

@@ -11,6 +11,8 @@ import zipfile
 import yaml
 from typing import List, Dict
 
+from src.utils.exceptions import VulnhallaError, CodeQLError
+
 
 def read_file(file_name: str) -> str:
     """
@@ -21,9 +23,21 @@ def read_file(file_name: str) -> str:
 
     Returns:
         str: The contents of the file, decoded as UTF-8.
+    
+    Raises:
+        VulnhallaError: If file cannot be read (not found, permission denied, encoding error).
     """
-    with open(file_name, "r", encoding="utf-8") as f:
-        return f.read()
+    try:
+        with open(file_name, "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError as e:
+        raise VulnhallaError(f"File not found: {file_name}") from e
+    except PermissionError as e:
+        raise VulnhallaError(f"Permission denied reading file: {file_name}") from e
+    except UnicodeDecodeError as e:
+        raise VulnhallaError(f"Failed to decode file as UTF-8: {file_name}") from e
+    except OSError as e:
+        raise VulnhallaError(f"OS error while reading file: {file_name}") from e
 
 
 def write_file_text(file_name: str, data: str) -> None:
@@ -33,9 +47,17 @@ def write_file_text(file_name: str, data: str) -> None:
     Args:
         file_name (str): The path to the file to be written.
         data (str): The string data to write to the file.
+    
+    Raises:
+        VulnhallaError: If file cannot be written (permission denied, disk full, etc.).
     """
-    with open(file_name, "w", encoding="utf-8") as f:
-        f.write(data)
+    try:
+        with open(file_name, "w", encoding="utf-8") as f:
+            f.write(data)
+    except PermissionError as e:
+        raise VulnhallaError(f"Permission denied writing file: {file_name}") from e
+    except OSError as e:
+        raise VulnhallaError(f"OS error while writing file: {file_name}") from e
 
 
 def write_file_ascii(file_name: str, data: str) -> None:
@@ -47,9 +69,17 @@ def write_file_ascii(file_name: str, data: str) -> None:
     Args:
         file_name (str): The path to the file to be written.
         data (str): The string data to write (non-ASCII chars ignored).
+    
+    Raises:
+        VulnhallaError: If file cannot be written (permission denied, disk full, etc.).
     """
-    with open(file_name, "wb") as f:
-        f.write(data.encode("ascii", "ignore"))
+    try:
+        with open(file_name, "wb") as f:
+            f.write(data.encode("ascii", "ignore"))
+    except PermissionError as e:
+        raise VulnhallaError(f"Permission denied writing file: {file_name}") from e
+    except OSError as e:
+        raise VulnhallaError(f"OS error while writing file: {file_name}") from e
 
 
 def get_all_dbs(dbs_folder: str) -> List[str]:
@@ -61,16 +91,24 @@ def get_all_dbs(dbs_folder: str) -> List[str]:
 
     Returns:
         List[str]: A list of file-system paths pointing to valid CodeQL databases.
+    
+    Raises:
+        CodeQLError: If database folder cannot be accessed (permission denied, not found, etc.).
     """
-    dbs_path = []
-    for folder in os.listdir(dbs_folder):
-        folder_path = os.path.join(dbs_folder, folder)
-        if os.path.isdir(folder_path):
-            for sub_folder in os.listdir(folder_path):
-                curr_db_path = os.path.join(folder_path, sub_folder)
-                if os.path.exists(os.path.join(curr_db_path, "codeql-database.yml")):
-                    dbs_path.append(curr_db_path)
-    return dbs_path
+    try:
+        dbs_path = []
+        for folder in os.listdir(dbs_folder):
+            folder_path = os.path.join(dbs_folder, folder)
+            if os.path.isdir(folder_path):
+                for sub_folder in os.listdir(folder_path):
+                    curr_db_path = os.path.join(folder_path, sub_folder)
+                    if os.path.exists(os.path.join(curr_db_path, "codeql-database.yml")):
+                        dbs_path.append(curr_db_path)
+        return dbs_path
+    except PermissionError as e:
+        raise CodeQLError(f"Permission denied accessing database folder: {dbs_folder}") from e
+    except OSError as e:
+        raise CodeQLError(f"OS error while accessing database folder: {dbs_folder}") from e
 
 
 def read_file_lines_from_zip(zip_path: str, file_path_in_zip: str) -> str:
@@ -83,10 +121,22 @@ def read_file_lines_from_zip(zip_path: str, file_path_in_zip: str) -> str:
 
     Returns:
         str: The contents of the file (as UTF-8) located within the ZIP.
+    
+    Raises:
+        CodeQLError: If ZIP file cannot be read or file not found in archive.
     """
-    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-        with zip_ref.open(file_path_in_zip) as file:
-            return file.read().decode('utf-8')
+    try:
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            with zip_ref.open(file_path_in_zip) as file:
+                return file.read().decode('utf-8')
+    except zipfile.BadZipFile as e:
+        raise CodeQLError(f"Invalid or corrupted ZIP file: {zip_path}") from e
+    except KeyError as e:
+        raise CodeQLError(f"File '{file_path_in_zip}' not found in ZIP archive: {zip_path}") from e
+    except PermissionError as e:
+        raise CodeQLError(f"Permission denied reading ZIP file: {zip_path}") from e
+    except OSError as e:
+        raise CodeQLError(f"OS error while reading ZIP file: {zip_path}") from e
 
 
 def read_yml(file_path: str) -> Dict:
@@ -98,6 +148,18 @@ def read_yml(file_path: str) -> Dict:
 
     Returns:
         Dict: The YAML data as a dictionary.
+    
+    Raises:
+        VulnhallaError: If file cannot be read or YAML parsing fails.
     """
-    with open(file_path, 'r', encoding="utf-8") as file:
-        return yaml.safe_load(file)
+    try:
+        with open(file_path, 'r', encoding="utf-8") as file:
+            return yaml.safe_load(file)
+    except FileNotFoundError as e:
+        raise VulnhallaError(f"YAML file not found: {file_path}") from e
+    except PermissionError as e:
+        raise VulnhallaError(f"Permission denied reading YAML file: {file_path}") from e
+    except yaml.YAMLError as e:
+        raise VulnhallaError(f"Failed to parse YAML file: {file_path}") from e
+    except OSError as e:
+        raise VulnhallaError(f"OS error while reading YAML file: {file_path}") from e

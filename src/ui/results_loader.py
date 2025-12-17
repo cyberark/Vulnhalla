@@ -8,7 +8,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 # Add project root to path for imports
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -17,6 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from src.ui.models import Issue
 from src.utils.logger import get_logger
+from src.utils.exceptions import VulnhallaError
 
 logger = get_logger(__name__)
 
@@ -71,9 +72,19 @@ class ResultsLoader:
         try:
             with open(path, 'r', encoding='utf-8') as f:
                 content = f.read()
-            try:
-                return json.loads(content)
-            except json.JSONDecodeError:
+        except FileNotFoundError as e:
+            logger.error("File not found: %s", path)
+            return None
+        except PermissionError as e:
+            logger.error("Permission denied reading file: %s", path)
+            return None
+        except OSError as e:
+            logger.error("OS error reading file: %s", path)
+            return None
+    
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
                 # Parse manually
                 messages = []
                 for match in re.finditer(r"\{'role':", content):
@@ -161,8 +172,17 @@ class ResultsLoader:
         try:
             with open(path, "r", encoding="utf-8") as f:
                 return json.loads(f.read().replace("\n", "\\n"))
+        except FileNotFoundError as e:
+            logger.error("File not found: %s", path)
+            return None
+        except PermissionError as e:
+            logger.error("Permission denied reading file: %s", path)
+            return None
         except json.JSONDecodeError as e:
             logger.error("JSON error parsing %s: %s", path, e)
+            return None
+        except OSError as e:
+            logger.error("OS error reading file: %s", path)
             return None
     
     @staticmethod
@@ -231,7 +251,7 @@ class ResultsLoader:
         except Exception:
             return "unknown/unknown"
     
-    def load_all_issues(self, lang: str) -> List[Issue]:
+    def load_all_issues(self, lang: str) -> Tuple[List[Issue], List[str]]:
         """
         Scan output/results/<lang>/<issue_type>/ and load all issues.
 
@@ -239,13 +259,16 @@ class ResultsLoader:
             lang (str): Language code to scan (e.g., "c").
 
         Returns:
-            List[Issue]: List of Issue objects loaded from all issue type directories.
+            Tuple[List[Issue], List[str]]: 
+                - List of Issue objects loaded from all issue type directories.
+                - List of error messages for files that failed to load.
         """
         issues = []
+        errors = []
         lang_dir = self.results_root / lang
         
         if not lang_dir.exists():
-            return issues
+            return issues, errors
         
         # Scan each issue_type directory
         for issue_type_dir in lang_dir.iterdir():
@@ -263,13 +286,19 @@ class ResultsLoader:
                 raw_file = final_file.parent / f"{issue_id}_raw.json"
                 
                 if not raw_file.exists():
+                    errors.append(f"Missing raw file for issue {issue_id}: {raw_file}")
                     continue
                 
                 # Parse JSON files
                 final_data = self.parse_final_json(final_file)
                 raw_data = self.parse_raw_json(raw_file)
                 
-                if not final_data or not raw_data:
+                if not final_data:
+                    errors.append(f"Failed to parse final JSON: {final_file}")
+                    continue
+                
+                if not raw_data:
+                    errors.append(f"Failed to parse raw JSON: {raw_file}")
                     continue
                 
                 file_basename, start_line = self._extract_file_info(raw_data)
@@ -313,5 +342,5 @@ class ResultsLoader:
                 )
                 issues.append(issue)
         
-        return issues
+        return issues, errors
 

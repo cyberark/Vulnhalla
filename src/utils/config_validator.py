@@ -238,9 +238,75 @@ def validate_llm_config() -> Tuple[bool, Optional[str]]:
         return False, f"Error loading LLM configuration: {str(e)}"
 
 
+def validate_logging_config() -> Tuple[bool, Optional[str]]:
+    """
+    Validate logging configuration from environment variables.
+    
+    Returns:
+        Tuple of (is_valid, error_message)
+        - is_valid: True if logging config is valid
+        - error_message: Error message if invalid, None if valid
+    """
+    import logging
+    
+    # Validate LOG_LEVEL
+    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+    valid_levels = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+    if log_level not in valid_levels:
+        return False, (
+            f"Invalid LOG_LEVEL: '{log_level}'. "
+            f"Must be one of: {', '.join(sorted(valid_levels))}"
+        )
+    
+    # Validate LOG_FORMAT
+    log_format = os.getenv("LOG_FORMAT", "default").lower()
+    valid_formats = {"default", "json"}
+    if log_format not in valid_formats:
+        return False, (
+            f"Invalid LOG_FORMAT: '{log_format}'. "
+            f"Must be one of: {', '.join(sorted(valid_formats))}"
+        )
+    
+    # Validate LOG_VERBOSE_CONSOLE
+    verbose_console = os.getenv("LOG_VERBOSE_CONSOLE", "false").lower()
+    if verbose_console not in {"true", "false"}:
+        return False, (
+            f"Invalid LOG_VERBOSE_CONSOLE: '{verbose_console}'. "
+            f"Must be 'true' or 'false'"
+        )
+    
+    # Validate THIRD_PARTY_LOG_LEVEL
+    third_party_level = os.getenv("THIRD_PARTY_LOG_LEVEL", "ERROR").upper()
+    if third_party_level not in valid_levels:
+        return False, (
+            f"Invalid THIRD_PARTY_LOG_LEVEL: '{third_party_level}'. "
+            f"Must be one of: {', '.join(sorted(valid_levels))}"
+        )
+    
+    # Validate LOG_FILE (if set, check if path is valid format)
+    log_file = os.getenv("LOG_FILE")
+    if log_file:
+        # Check if path contains invalid characters (basic validation)
+        from pathlib import Path
+        try:
+            # Try to create a Path object to validate format
+            log_path = Path(log_file)
+            # Check if parent directory can be determined (basic path validation)
+            if log_path.is_absolute() or log_path.parent != Path("."):
+                # Path seems valid, but we don't check if directory exists (it will be created)
+                pass
+        except (ValueError, OSError) as e:
+            return False, (
+                f"Invalid LOG_FILE path: '{log_file}'. "
+                f"Error: {str(e)}"
+            )
+    
+    return True, None
+
+
 def validate_all_config() -> Tuple[bool, List[str]]:
     """
-    Validate all configuration (CodeQL and LLM).
+    Validate all configuration (CodeQL, LLM, and Logging).
     
     Returns:
         Tuple of (is_valid, error_messages)
@@ -259,6 +325,11 @@ def validate_all_config() -> Tuple[bool, List[str]]:
     if not llm_valid:
         errors.append(f"❌ LLM Configuration Error:\n{llm_error}")
     
+    # Validate Logging config
+    logging_valid, logging_error = validate_logging_config()
+    if not logging_valid:
+        errors.append(f"❌ Logging Configuration Error:\n{logging_error}")
+    
     is_valid = len(errors) == 0
     return is_valid, errors
 
@@ -268,21 +339,30 @@ def validate_and_exit_on_error() -> None:
     Validate all configuration and exit with error message if invalid.
     
     This is the main function to call at startup.
+    
+    Raises:
+        LLMConfigError: If LLM configuration is invalid
+        CodeQLConfigError: If CodeQL configuration is invalid
+        VulnhallaError: If Logging configuration is invalid
     """
+    from src.utils.exceptions import LLMConfigError, CodeQLConfigError, VulnhallaError
+    
     is_valid, errors = validate_all_config()
     
     if not is_valid:
         errors_block = "\n\n".join(errors)
-        message = f"""
-============================================================
-⚠️ Configuration Validation Failed
-============================================================
-{errors_block}
-============================================================
-Please fix the configuration errors above and try again.
-See README.md for configuration reference.
-============================================================
-"""
-        logger.error(message)
-        exit(1)
+        
+        has_llm_error = any("LLM" in error for error in errors)
+        has_codeql_error = any("CodeQL" in error for error in errors)
+        has_logging_error = any("Logging" in error for error in errors)
+        
+        # Priority: LLM > CodeQL > Logging
+        if has_llm_error:
+            raise LLMConfigError(errors_block)
+        elif has_codeql_error:
+            raise CodeQLConfigError(errors_block)
+        elif has_logging_error:
+            raise VulnhallaError(errors_block)
+        else:
+            raise VulnhallaError(errors_block)
 

@@ -135,7 +135,9 @@ class VulnhallaUI(App):
     
     def load_issues(self) -> None:
         """
-        Load issues from output/results/ for current language.
+        Load issues from disk and update the UI.
+        
+        Displays error notifications if any files fail to load.
         """
         self.current_lang = "c"  # Only C is currently supported
         
@@ -145,8 +147,25 @@ class VulnhallaUI(App):
             if issue.manual_decision is not None:
                 manual_decisions_map[issue.final_path] = issue.manual_decision
         
-        # Load issues from disk
-        self.issues = self.loader.load_all_issues(self.current_lang)
+        # Load issues from disk - now returns (issues, errors)
+        self.issues, errors = self.loader.load_all_issues(self.current_lang)
+        
+        # Display errors to user if any occurred
+        if errors:
+            error_count = len(errors)
+            if error_count == 1:
+                self.notify(f"Error loading file: {errors[0]}", severity="error")
+            else:
+                # Show summary for multiple errors
+                self.notify(
+                    f"Failed to load {error_count} file(s). Check logs for details.",
+                    severity="warning"
+                )
+                # Log all errors for debugging
+                from src.utils.logger import get_logger
+                logger = get_logger(__name__)
+                for error in errors:
+                    logger.warning(error)
         
         # Restore manual decisions by matching final_path
         for issue in self.issues:
@@ -253,6 +272,9 @@ class VulnhallaUI(App):
                     for _ in range(idx):
                         table.action_cursor_down()
                     break
+        
+        # Refresh the table to ensure visual update
+        table.refresh()
         
         # Update count with sort indicator
         count_widget = self.query_one("#issues-count", Static)
