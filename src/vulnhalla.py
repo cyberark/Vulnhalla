@@ -7,6 +7,14 @@ classification by an LLM. It loads issues from CodeQL result files,
 groups them by issue type, runs LLM-based analysis to decide whether
 each finding is a true positive, false positive, or needs more data,
 and writes structured result files for further inspection (e.g. in the UI).
+
+Analysis Pipeline Algorithm:
+    1. Collect DBs via get_all_dbs(dbs_folder), parse issues.csv, group by issue['name'].
+    2. For each issue: find containing function via find_function_by_line() (smallest line range).
+    3. Extract snippet and full function code.
+    4. Replace bracket references in the message; if references point outside current function, append those functions' code.
+    5. Build prompt; save *_raw.json; run LLM analysis; save *_final.json.
+    6. Classify by substring: "1337" → true, "1007" → false, else → more; log stats.
 """
 
 from pathlib import Path, PurePosixPath
@@ -132,11 +140,16 @@ class IssueAnalyzer:
 
     def find_function_by_line(self, function_tree_file: str, file_path: str, line: int) -> Optional[Dict[str, str]]:
         """
-        Finds the most specific (smallest) function in the function tree file that includes the given file and line number.
+        Finds the most specific (smallest) function containing the given file and line number.
+
+        Algorithm:
+            - Iterate rows where file_path substring appears
+            - Keep rows where start_line <= line <= end_line and file_path in function["file"]
+            - Return function with smallest (end_line - start_line), else None
 
         Args:
             function_tree_file (str): Path to the 'FunctionTree.csv' file.
-            file_path (str): Partial or full file path to match in the CSV rows.
+            file_path (str): File path substring to match (uses substring containment).
             line (int): The line number to check within function range.
 
         Returns:
@@ -164,8 +177,11 @@ class IssueAnalyzer:
                         except ValueError:
                             continue  # Skip if lines aren't integers
 
+                        # Check if the target line falls within this function's range
                         if start_line <= line <= end_line:
                             if file_path in function["file"]:
+                                # Greedy selection: track the function with smallest range
+                                # (most specific/nested function containing the line)
                                 size = end_line - start_line
                                 if size < smallest_range:
                                     best_function = function
@@ -211,9 +227,13 @@ class IssueAnalyzer:
         code_path: str
     ) -> Callable[[re.Match], str]:
         """
-        Creates and returns a 'replacement' callback function that can be used with
-        `re.sub` to transform bracketed references (like [[var|"file://path:line:..."]])
-        into a more readable snippet inline with line references.
+        Creates a replacement callback for re.sub to transform CodeQL bracket references
+        into readable code snippets.
+
+        Algorithm:
+            - Parse (variable, path_type, file_path, line, offsets)
+            - Resolve path: relative:// → code_path + file_path; else strip leading '/'
+            - Read from src.zip, slice snippet, return "var 'snippet' (filename:line)"
 
         Args:
             db_path (str): Path to the current CodeQL database.
@@ -233,11 +253,9 @@ class IssueAnalyzer:
             start_offset = match.group(5)
             end_offset = match.group(6)
 
-            # Read snippet from the code
             if path_type == "relative://":
                 full_path = code_path + file_path
             else:
-                # Handle 'file://' or something else by removing the leading slash
                 full_path = file_path[1:] if file_path.startswith("/") else file_path
 
             code_text = read_file_lines_from_zip(
@@ -291,7 +309,7 @@ class IssueAnalyzer:
         template = read_file_utf8(str(template_path))
 
         file_name = PurePosixPath(issue["file"]).name
-        location = f"look at {file_name}:{int(issue['start_line']) - 1} with '{snippet}'"
+        location = f"look at {file_name}:{int(issue['start_line'])} with '{snippet}'"
 
         # Special case for "Use of object after its lifetime has ended"
         if issue["name"] == "Use of object after its lifetime has ended":
@@ -413,30 +431,37 @@ class IssueAnalyzer:
         current_function: Dict[str, str]
     ) -> Tuple[str, List[Dict[str, str]]]:
         """
-        Searches for additional functions (via bracket references) outside the current one
-        and appends their code to the main snippet.
+        Appends code from additional functions referenced outside the current function.
+
+        Algorithm:
+            - Skip references within current function range
+            - For external refs: find containing function via find_function_by_line(), dedupe by dict equality
+            - Append extracted function code; return updated code and functions list
 
         Args:
-            extra_lines (List[tuple[str, str, str]]): All matches of additional references.
+            extra_lines (List[tuple[str, str, str]]): References as (path_type, file_path, line_number).
             function_tree_file (str): Path to 'FunctionTree.csv'.
             src_zip_path (str): Path to the DB's src.zip file.
             code (str): The existing code snippet.
             current_function (Dict[str, str]): The currently found function dict.
 
         Returns:
-            str: The extended code snippet, possibly including multiple functions.
+            Tuple[str, List[Dict[str, str]]]: Extended code snippet and list of all functions.
         
         Raises:
             CodeQLError: If function tree file or ZIP file cannot be read.
         """
         functions = [current_function]
         for another_func_ref in extra_lines:
+            # Unpack reference tuple: (path_type, file_path, line_number)
             path_type, file_ref, line_ref = another_func_ref
             file_ref = file_ref.strip()
 
+            # Resolve file path based on path type
             if path_type == "relative://":
                 file_ref = self.code_path + file_ref
             else:
+                # Remove leading slash for absolute paths (file://)
                 file_ref = file_ref[1:] if file_ref.startswith("/") else file_ref
 
             # If it's within the same function's line range, skip
@@ -445,10 +470,12 @@ class IssueAnalyzer:
             if start_line_func <= int(line_ref) <= end_line_func:
                 continue
 
-            # Attempt to find the new function
+            # Find the function containing this reference using the greedy selection algorithm
             new_function = self.find_function_by_line(function_tree_file, "/" + file_ref, int(line_ref))
+            # Deduplication: Only add if function was found and not already in the list
             if new_function and new_function not in functions:
                 functions.append(new_function)
+                # Read the function's source file and extract its code
                 code_file2 = read_file_lines_from_zip(src_zip_path, file_ref).split("\n")
                 code += (
                     "\n\nfile: " + file_ref + "\n" +
@@ -466,6 +493,13 @@ class IssueAnalyzer:
         """
         Processes all issues of a single type. Builds file/folder paths, runs
         analysis, calls the LLM, and saves results.
+
+        Algorithm (per issue):
+            - Normalize paths (Windows: ':'→'_', '\'→'/'; Linux: strip leading '/')
+            - Find function; extract snippet [start_offset-1:end_offset]
+            - Replace bracket refs; append extra functions if needed
+            - Build prompt; save raw/final; run LLM
+            - Classify by '1337'/'1007'/else; log stats
 
         Args:
             issue_type (str): The name of the issue type.
@@ -495,10 +529,17 @@ class IssueAnalyzer:
             db_yml = read_yml(str(db_yml_path))
             self.code_path = db_yml["sourceLocationPrefix"]
 
-            # Adjust Windows / Linux path references
+            # Path normalization for cross-platform compatibility:
+            # Windows paths contain ":" (e.g., "C:\path\to\code") which conflicts with
+            # ZIP archive path handling. We normalize by:
+            # - Replacing ":" with "_" (e.g., "C_" instead of "C:")
+            # - Converting backslashes to forward slashes
+            # Linux paths are absolute (start with "/") which we remove for ZIP access
             if ":" in self.code_path:
+                # Windows path: normalize drive letter and separators
                 self.code_path = self.code_path.replace(":", "_").replace("\\", "/")
             else:
+                # Linux path: remove leading slash
                 self.code_path = self.code_path[1:]
 
             function_tree_file = str(db_path_obj / "FunctionTree.csv")
@@ -525,12 +566,12 @@ class IssueAnalyzer:
                 self.extract_function_code(code_file_contents, current_function)
             )
 
-            # Replace bracket references in the issue message
+            # Replace bracket refs in message
             bracket_pattern = r'\[\["(.*?)"\|"((?:relative://|file://))?(/.*?):(\d+):(\d+):\d+:(\d+)"\]\]'
             transform_func = self.create_bracket_reference_replacer(self.db_path, self.code_path)
             message = re.sub(bracket_pattern, transform_func, issue["message"])
 
-            # Also check for lines referencing other code blocks
+            # Find extra refs for context expansion
             extra_lines_pattern = r'\[\[".*?"\|"((?:relative://|file://)?)(/.*?):(\d+):\d+:\d+:\d+"\]\]'
             extra_lines = re.findall(extra_lines_pattern, issue["message"])
             functions = [current_function]
