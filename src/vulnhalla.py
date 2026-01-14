@@ -22,8 +22,6 @@ import csv
 import re
 import json
 from typing import Any, Callable, Dict, List, Optional, Tuple
-
-# Import from common
 from src.utils.common_functions import (
     get_all_dbs,
     read_file_lines_from_zip,
@@ -32,7 +30,7 @@ from src.utils.common_functions import (
     read_yml
 )
 
-# Script that holds your GPT logic
+# LLM analyzer for security analysis
 from src.llm.llm_analyzer import LLMAnalyzer
 from src.utils.config_validator import validate_and_exit_on_error
 from src.utils.logger import get_logger
@@ -97,7 +95,7 @@ class IssueAnalyzer:
             raise CodeQLError(f"OS error while reading issues CSV: {file_name}") from e
         return issues
 
-    def collect_issues_from_databases(self, dbs_folder: str) -> Dict[str, List[Dict[str, str]]]:
+    def collect_issues_from_databases(self, dbs_dir: str) -> Dict[str, List[Dict[str, str]]]:
         """
         Searches through all CodeQL databases in `dbs_folder`, collects issues
         from each DB, and groups them by issue name.
@@ -112,14 +110,13 @@ class IssueAnalyzer:
             CodeQLError: If database folder cannot be accessed or issues cannot be read.
         """
         issues_statistics: Dict[str, List[Dict[str, str]]] = {}
-        # get_all_dbs() raises CodeQLError on errors
-        dbs_path = get_all_dbs(dbs_folder)
-        for curr_db in dbs_path:
+        
+        actual_dbs = get_all_dbs(dbs_dir)
+        for curr_db in actual_dbs:
             logger.info("Processing DB: %s", curr_db)
             curr_db_path = Path(curr_db)
             function_tree_csv = curr_db_path / "FunctionTree.csv"
             issues_file = curr_db_path / "issues.csv"
-
             if function_tree_csv.exists() and issues_file.exists():
                 # parse_issues_csv() raises CodeQLError on errors
                 issues = self.parse_issues_csv(str(issues_file))
@@ -208,11 +205,12 @@ class IssueAnalyzer:
         """
         if not function_dict:
             return ""
-        start_line = int(function_dict["start_line"]) - 1
+        start_line_idx = int(function_dict["start_line"]) - 1  # Index for array access
+        start_line_display = int(function_dict["start_line"])  # Index for display
         end_line = int(function_dict["end_line"])
-        snippet_lines = code_file[start_line:end_line]
+        snippet_lines = code_file[start_line_idx:end_line]
         snippet = "\n".join(
-            f"{start_line + i}: {s.replace(chr(9), '    ')}"
+            f"{start_line_display + i}: {s.replace(chr(9), '    ')}"
             for i, s in enumerate(snippet_lines)
         )
         return snippet
@@ -387,6 +385,7 @@ class IssueAnalyzer:
         raw_output_file = Path(results_folder) / f"{issue_id}_raw.json"
         write_file_ascii(str(raw_output_file), raw_data)
 
+
     def format_llm_messages(self, messages: List[str]) -> str:
         """
         Converts the list of messages returned by the LLM into a JSON-ish string to
@@ -402,6 +401,7 @@ class IssueAnalyzer:
             f"'''{item}'''" if "\n" in item else repr(item) for item in messages).replace("\\n", "\n    ").replace(
             "\\t", " ") + "\n]"
         return gpt_result
+
 
     def determine_issue_status(self, llm_content: str) -> str:
         """
@@ -484,6 +484,22 @@ class IssueAnalyzer:
 
         return code, functions
 
+    def get_next_issue_id(self, issue_type: str) -> int:
+        """
+        Gets the maximum issue ID currently in the results folder.
+        Returns 0 if no files exist. The caller should add 1 to get the next ID.
+        """
+        max_issue_id = 1
+        results_folder = Path("output/results") / self.lang / issue_type.replace(" ", "_").replace("/", "-")
+        if not results_folder.exists() or len(list(results_folder.glob("*.json"))) == 0:
+            return 1
+            
+        for file in results_folder.glob("*.json"):
+            issue_id = int(file.stem.split("_")[0])
+            max_issue_id = max(issue_id, max_issue_id)
+        return max_issue_id + 1
+
+
     def process_issue_type(
         self,
         issue_type: str,
@@ -514,7 +530,7 @@ class IssueAnalyzer:
         results_folder = Path("output/results") / self.lang / issue_type.replace(" ", "_").replace("/", "-")
         self.ensure_directories_exist([str(results_folder)])
 
-        issue_id = 0
+        issue_id = self.get_next_issue_id(issue_type)
         real_issues = []
         false_issues = []
         more_data = []
@@ -522,7 +538,6 @@ class IssueAnalyzer:
         logger.info("Found %d issues of type %s", len(issues_of_type), issue_type)
         logger.info("")
         for issue in issues_of_type:
-            issue_id += 1
             self.db_path = issue["db_path"]
             db_path_obj = Path(self.db_path)
             db_yml_path = db_path_obj / "codeql-database.yml"
@@ -612,6 +627,7 @@ class IssueAnalyzer:
 
             # Log issue status
             logger.info("Issue ID: %s, LLM decision: → %s", issue_id, status)
+            issue_id += 1
 
         logger.info("")
         logger.info("Issue type: %s", issue_type)
@@ -621,7 +637,8 @@ class IssueAnalyzer:
         logger.info("LLM needs More Data: %d", len(more_data))
         logger.info("")
 
-    def run(self) -> None:
+
+    def run(self, dbs_dir: str) -> None:
         """
         Main analysis routine:
         1. Initializes the LLM.
@@ -630,6 +647,9 @@ class IssueAnalyzer:
         4. Asks the LLM for each issue's snippet context, saving final results
            in various directory structures.
         
+        Args:
+            dbs_dir (str): Path to the directory containing downloaded databases.
+            
         Raises:
             CodeQLError: If database files cannot be accessed or read.
             VulnhallaError: If directory creation or file writing fails.
@@ -642,10 +662,8 @@ class IssueAnalyzer:
         llm_analyzer = LLMAnalyzer()
         llm_analyzer.init_llm_client(config=self.config)
 
-        dbs_folder = str(Path("output/databases") / self.lang)
-
         # Gather issues from all DBs
-        issues_statistics = self.collect_issues_from_databases(dbs_folder)
+        issues_statistics = self.collect_issues_from_databases(dbs_dir)
 
         total_issues = 0
         for issue_type in issues_statistics:
@@ -666,4 +684,3 @@ if __name__ == '__main__':
     # Or use: analyzer = IssueAnalyzer(lang="c", config={...})
     analyzer = IssueAnalyzer(lang="c")
     analyzer.run()
-

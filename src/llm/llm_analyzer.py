@@ -11,7 +11,6 @@ import os
 import json
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-# Import the relevant LLM clients here
 import litellm
 from src.utils.llm_config import load_llm_config, get_model_name
 from src.utils.config_validator import validate_llm_config_dict
@@ -213,7 +212,8 @@ class LLMAnalyzer:
         except Exception as e:
             # Other errors (e.g., from load_llm_config) should also be LLMConfigError
             raise LLMConfigError(f"Failed to initialize LLM client: {e}") from e
-    
+
+
     def setup_litellm_env(self) -> None:
         """
         Set up environment variables for LiteLLM based on config.
@@ -284,6 +284,7 @@ class LLMAnalyzer:
                 env_var_name = f"{provider.upper()}_API_KEY"
                 os.environ[env_var_name] = api_key
 
+
     def extract_function_from_file(
         self,
         db_path: str,
@@ -311,6 +312,7 @@ class LLMAnalyzer:
         )
         snippet_lines = lines[start_line - 1 : end_line]
         return self.db_lookup.format_numbered_snippet(file_path, start_line, snippet_lines)
+
 
     def map_func_args_by_llm(
         self,
@@ -362,6 +364,7 @@ class LLMAnalyzer:
         except Exception as e:
             # Catch any other unexpected errors from LiteLLM
             raise LLMApiError(f"Unexpected error during LLM API call: {e}") from e
+
 
     def run_llm_security_analysis(
         self,
@@ -431,6 +434,9 @@ class LLMAnalyzer:
             except Exception as e:
                 # Catch any other unexpected errors from LiteLLM
                 raise LLMApiError(f"Unexpected error during LLM API call: {e}") from e
+            
+            if not response.choices:
+                raise LLMApiError(f"LLM API response is empty: {response}")
 
             content_obj = response.choices[0].message
             messages.append({

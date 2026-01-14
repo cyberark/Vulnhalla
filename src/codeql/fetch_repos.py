@@ -2,13 +2,9 @@
 """
 Fetch repositories and their CodeQL databases from GitHub.
 
-Allows either:
-  1) Bulk retrieval of repositories by language, or
-  2) Downloading a specific repository's CodeQL database.
+Downloads a specific repository's CodeQL database.
 
 Example CLI usage:
-    python fetch_repos.py
-    # Or
     python fetch_repos.py myOrgName/myRepoName
 """
 
@@ -21,8 +17,7 @@ import requests
 from typing import Any, Dict, List
 from pySmartDL import SmartDL
 
-# Import from your local common_functions where needed
-from src.utils.common_functions import read_file, write_file_text
+from src.utils.common_functions import read_file, write_file_text, get_all_dbs
 from src.utils.config import get_github_token
 from src.utils.logger import get_logger
 from src.utils.exceptions import CodeQLError, CodeQLConfigError
@@ -280,7 +275,7 @@ def custom_download(url: str, local_filename: str, max_attempts: int = 5, attemp
                 print()
 
         time_taken = time.time() - start_time
-        logger.info("File downloaded successfully as %s", local_filename)
+        logger.debug("File downloaded successfully as %s", local_filename)
         logger.info("Download completed in %.2f minutes.", time_taken / 60)
 
     except requests.RequestException as e:
@@ -490,7 +485,7 @@ def search_top_matching_repos(max_repos: int, lang: str) -> List[Dict[str, Any]]
     return repos_db[:max_repos]
 
 
-def download_and_extract_db(repo: Dict[str, Any], threads: int, extract_folder: str) -> None:
+def download_and_extract_db(repo: Dict[str, Any], threads: int, extract_folder: str) -> str:
     """
     Handle the download and extraction of a single repository's CodeQL DB.
 
@@ -499,6 +494,9 @@ def download_and_extract_db(repo: Dict[str, Any], threads: int, extract_folder: 
         threads (int): Number of threads for multi-threaded download.
         extract_folder (str): Where to extract the DB files.
     
+    Returns:
+        str: Path to the directory containing downloaded database.
+        
     Raises:
         CodeQLError: If download, extraction, or folder rename fails.
         CodeQLConfigError: On 4xx client errors during download (e.g., invalid token).
@@ -506,7 +504,6 @@ def download_and_extract_db(repo: Dict[str, Any], threads: int, extract_folder: 
     org_name, repo_name = repo["repo_name"].split("/")
     logger.info("Downloading repo %s/%s", org_name, repo_name)
     zip_path = multi_thread_db_download(repo["db_url"], repo_name, threads)
-
     db_path = Path(extract_folder) / repo_name
     unzip_file(zip_path, str(db_path))
     time.sleep(1)  # Let file system sync
@@ -514,14 +511,14 @@ def download_and_extract_db(repo: Dict[str, Any], threads: int, extract_folder: 
     # Rename the extracted folder if needed (with retry for Windows file locking)
     source_path = None
     target_path = db_path / repo_name
-    
     codeql_db_path = db_path / "codeql_db"
     lang_path = db_path / LANG
+
     if codeql_db_path.exists():
         source_path = codeql_db_path
     elif lang_path.exists():
         source_path = lang_path
-    
+
     if source_path and not target_path.exists():
         # Retry rename with delays (Windows may lock files temporarily)
         for attempt in range(3):
@@ -538,7 +535,12 @@ def download_and_extract_db(repo: Dict[str, Any], threads: int, extract_folder: 
                     )
                     raise CodeQLError(error_msg) from e
 
-def download_db_by_name(repo_name: str, lang: str, threads: int) -> None:
+    if target_path.exists():
+        return str(target_path)
+    return str(db_path)
+
+
+def download_db_by_name(repo_name: str, lang: str, threads: int) -> str:
     """
     Download the CodeQL database for a single repository.
 
@@ -547,6 +549,9 @@ def download_db_by_name(repo_name: str, lang: str, threads: int) -> None:
         lang (str): The language to pass to GH DB detection (e.g., 'c').
         threads (int): Number of threads to use for download.
     
+    Returns:
+        str: Path to the directory containing downloaded database.
+
     Raises:
         CodeQLConfigError: If GitHub API returns 4xx (invalid token, permissions, etc.) 
             during database lookup or download.
@@ -561,31 +566,26 @@ def download_db_by_name(repo_name: str, lang: str, threads: int) -> None:
     repo_db = filter_repos_by_db_and_lang([repo], lang)
     if not repo_db:
         logger.warning("No %s DB found for %s", lang, repo_name)
-        return
-    download_and_extract_db(repo_db[0], threads, str(Path("output/databases") / lang))
+        return []
+    return download_and_extract_db(repo_db[0], threads, str(Path("output/databases") / lang))
 
 
 def fetch_codeql_dbs(
     lang: str = "c",
-    max_repos: int = 100,
     threads: int = 4,
-    single_repo: str = None,
-    backup_file: str = "repos_db.json"
-) -> None:
+    repo_name: str = None
+) -> str:
     """
     Fetch and download CodeQL databases for GitHub repositories.
 
-    If `single_repo` is provided (e.g. 'org/repo'), only that DB is downloaded.
-    Otherwise, fetch the top repositories for `lang` and retrieve their DBs.
-
     Args:
         lang (str, optional): The programming language. Defaults to "c".
-        max_repos (int, optional): Max number of top-starred repos to fetch. Defaults to 100.
         threads (int, optional): Number of threads for multi-threaded download. Defaults to 4.
-        single_repo (str, optional): If provided, downloads only this repo's DB.
+        repo_name (str, optional): Downloads this repository's DB.
             Format: "org/repo". Defaults to None.
-        backup_file (str, optional): Path to the JSON file used to store repo data
-            between downloads. Defaults to "repos_db.json".
+    
+    Returns:
+        str: Path to the directory containing downloaded database.
     
     Raises:
         CodeQLError: If directory creation, download, or extraction fails.
@@ -599,8 +599,7 @@ def fetch_codeql_dbs(
         raise CodeQLError(f"Permission denied creating database directory: {db_folder_path}") from e
     except OSError as e:
         raise CodeQLError(f"OS error creating database directory: {db_folder_path}") from e
-    db_folder = str(db_folder_path)
-    
+
     zip_folder_path = Path("output/zip_dbs") / lang
     try:
         zip_folder_path.mkdir(parents=True, exist_ok=True)
@@ -608,50 +607,23 @@ def fetch_codeql_dbs(
         raise CodeQLError(f"Permission denied creating ZIP directory: {zip_folder_path}") from e
     except OSError as e:
         raise CodeQLError(f"OS error creating ZIP directory: {zip_folder_path}") from e
-    zip_folder = str(zip_folder_path)
-
-    if single_repo:
-        # Download only that specific repository
-        download_db_by_name(single_repo, lang, threads)
-        return
-
-    # Otherwise fetch top repos for this language
-    logger.info("Fetching up to %d top %s repos with DBs on GitHub.", max_repos, lang)
-    repos_db = search_top_matching_repos(max_repos, lang)
-    write_file_text(backup_file, json.dumps(repos_db))
-
-    for i, repo_info in enumerate(repos_db):
-        logger.info("Downloading repo %d/%d: %s", i + 1, len(repos_db), repo_info['repo_name'])
-        download_and_extract_db(repo_info, threads, db_folder)
-
-        # Update the backup file in case of error or partial completion
-        remaining = repos_db[i + 1 :]
-        write_file_text(backup_file, json.dumps(remaining))
-
-    backup_file_path = Path(backup_file)
-    if backup_file_path.exists():
-        try:
-            backup_file_path.unlink()
-        except PermissionError as e:
-            logger.warning("Permission denied deleting backup file %s: %s", backup_file, e)
-        except OSError as e:
-            logger.warning("OS error deleting backup file %s: %s", backup_file, e)
+    
+    return download_db_by_name(repo_name, lang, threads)
 
 
 def main_cli() -> None:
     """
-    CLI entry point. If no arguments, fetch top LANG repos.
-    If an argument 'org/repo' is provided, fetch just that DB.
+    CLI entry point. Downloads a specific repository's CodeQL database.
+    Requires an argument 'org/repo' to specify which repository to fetch.
     """
     logger.info("Current lang: %s", LANG)
 
     if len(sys.argv) == 1:
-        # No arguments, do the "bulk fetch"
-        fetch_codeql_dbs(lang=LANG, max_repos=100, threads=4)
+        raise CodeQLError("No arguments provided")
     else:
         # If a single arg is provided, assume it's an 'org/repo' to fetch
         if "/" in sys.argv[1]:
-            fetch_codeql_dbs(lang=LANG, threads=4, single_repo=sys.argv[1])
+            fetch_codeql_dbs(lang=LANG, threads=4, repo_name=sys.argv[1])
         else:
             logger.error("Usage:\n  python fetch_repos.py\n  or\n  python fetch_repos.py orgName/repoName")
 

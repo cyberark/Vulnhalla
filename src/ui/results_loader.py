@@ -35,7 +35,8 @@ class ResultsLoader:
                 Defaults to "output/results".
         """
         self.results_root = Path(results_root)
-    
+
+
     def extract_status(self, content: str) -> str:
         """
         Extract status code from LLM content.
@@ -55,7 +56,8 @@ class ResultsLoader:
         elif "1007" in content_lower:
             return "false"
         return "more"
-    
+
+
     def parse_final_json(self, path: Path) -> Optional[List[Dict]]:
         """
         Parse _final.json file containing LLM messages.
@@ -157,7 +159,8 @@ class ResultsLoader:
                 return messages if messages else None
         except Exception:
             return None
-        
+
+
     def parse_raw_json(self, path: Path) -> Optional[Dict]:
         """
         Parse _raw.json file containing original CodeQL issue data.
@@ -183,7 +186,8 @@ class ResultsLoader:
         except OSError as e:
             logger.error("OS error reading file: %s", path)
             return None
-    
+
+
     @staticmethod
     def _extract_issue_name(raw_data: Dict, issue_type: str) -> str:
         """
@@ -202,7 +206,8 @@ class ResultsLoader:
             if name_match:
                 return name_match.group(1).strip()
         return issue_name
-    
+
+
     @staticmethod
     def _extract_file_info(raw_data: Dict) -> tuple[str, int]:
         """
@@ -217,7 +222,8 @@ class ResultsLoader:
         func = raw_data.get("current_function", {})
         file_path = func.get("file", "")
         return (PurePosixPath(file_path).name if file_path else "unknown", int(func.get("start_line", 0)))
-    
+
+
     @staticmethod
     def _extract_repo_from_db_path(db_path: str) -> str:
         """
@@ -249,7 +255,8 @@ class ResultsLoader:
                 return "unknown/unknown"
         except Exception:
             return "unknown/unknown"
-    
+
+
     def load_all_issues(self, lang: str) -> Tuple[List[Issue], List[str]]:
         """
         Scan output/results/<lang>/<issue_type>/ and load all issues.

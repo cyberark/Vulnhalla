@@ -33,7 +33,8 @@ class SplitterDivider(Widget):
         super().__init__()
         self.app_instance = app_instance
         self.dragging = False
-    
+
+
     def render(self):
         """
         Render the divider as a thin vertical line.
@@ -42,7 +43,8 @@ class SplitterDivider(Widget):
             str: Single vertical line character "│".
         """
         return "│"
-    
+
+
     def on_mouse_down(self, event) -> None:
         """
         Start dragging when mouse is pressed.
@@ -52,7 +54,8 @@ class SplitterDivider(Widget):
         """
         self.dragging = True
         self.capture_mouse()
-    
+
+
     def on_mouse_move(self, event) -> None:
         """
         Update split position while dragging.
@@ -80,7 +83,8 @@ class SplitterDivider(Widget):
                             new_position = max(0.2, min(0.8, self.app_instance.split_position + delta))
                             self.app_instance.split_position = new_position
                             self.app_instance._update_split_position()
-    
+
+
     def on_mouse_up(self, event) -> None:
         """
         Stop dragging when mouse is released.

@@ -88,19 +88,17 @@ def format_manual_decision(manual_decision: Optional[str]) -> str:
     return manual_decision if manual_decision else "Not Set"
 
 
-def get_default_sort_key(issue: "Issue") -> Tuple[str, float]:
+def get_default_sort_key(issue: "Issue") -> float:
     """
-    Get default sort key for an issue (repo, then ID).
+    Get default sort key for an issue (numeric ID).
 
     Args:
         issue (Issue): Issue to get sort key for.
 
     Returns:
-        Tuple[str, float]: Sort key tuple (repo lowercase, numeric ID or inf).
+        float: Numeric ID or inf if ID is not numeric.
     """
-    repo_key = issue.repo.lower()
-    id_key = int(issue.id) if issue.id.isdigit() else float('inf')
-    return (repo_key, id_key)
+    return int(issue.id) if issue.id.isdigit() else float('inf')
 
 
 def get_sort_key_for_column(column: str) -> Optional[Callable[["Issue"], any]]:

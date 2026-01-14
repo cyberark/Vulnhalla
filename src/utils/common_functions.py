@@ -95,15 +95,16 @@ def get_all_dbs(dbs_folder: str) -> List[str]:
     Raises:
         CodeQLError: If database folder cannot be accessed (permission denied, not found, etc.).
     """
+    if not Path(dbs_folder).exists():
+        return []
+    if (Path(dbs_folder) / "codeql-database.yml").exists():
+        return [dbs_folder]
+
     try:
         dbs_path = []
-        dbs_folder_path = Path(dbs_folder)
-        for folder in dbs_folder_path.iterdir():
-            if folder.is_dir():
-                for sub_folder in folder.iterdir():
-                    curr_db_path = sub_folder
-                    if (curr_db_path / "codeql-database.yml").exists():
-                        dbs_path.append(str(curr_db_path))
+        for path in Path(dbs_folder).rglob('codeql-database.yml'):
+            db_path = path.parent
+            dbs_path.append(str(db_path))
         return dbs_path
     except PermissionError as e:
         raise CodeQLError(f"Permission denied accessing database folder: {dbs_folder}") from e

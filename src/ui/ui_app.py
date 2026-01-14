@@ -113,7 +113,8 @@ class VulnhallaUI(App):
                 yield DetailsPanel(id="details")
             yield ControlsBar(id="controls-bar")
         yield Footer()
-    
+
+
     def on_mount(self) -> None:
         """
         Initialize the UI when app starts.
@@ -132,7 +133,8 @@ class VulnhallaUI(App):
             manual_decision_container.styles.display = "none"
         except:
             pass
-    
+
+
     def load_issues(self) -> None:
         """
         Load issues from disk and update the UI.
@@ -173,7 +175,8 @@ class VulnhallaUI(App):
                 issue.manual_decision = manual_decisions_map[issue.final_path]
         
         self.apply_filters()
-    
+
+
     def apply_filters(self) -> None:
         """
         Apply current filter and search to issues list.
@@ -204,16 +207,17 @@ class VulnhallaUI(App):
                 or (not i.manual_decision and query_lower in "not set")
             ]
         
-        # Apply user-defined column sorting if set, otherwise use default repo sorting
+        # Apply user-defined column sorting if set, otherwise use default ID sorting
         if self.sort_column:
             self._sort_filtered_issues(filtered)
         else:
-            # Default: Sort by repo (case-insensitive) then by numeric ID
+            # Default: Sort by numeric ID
             filtered.sort(key=get_default_sort_key)
         
         self.filtered_issues = filtered
         self.update_issues_table()
-    
+
+
     def _sort_filtered_issues(self, issues: List[Issue]) -> None:
         """
         Sort filtered issues by the current sort column and direction.
@@ -227,7 +231,8 @@ class VulnhallaUI(App):
         sort_key = get_sort_key_for_column(self.sort_column)
         if sort_key:
             issues.sort(key=sort_key, reverse=not self.sort_ascending)
-    
+
+
     def update_issues_table(self, preserve_row_key: Optional[str] = None) -> None:
         """
         Update the issues table with current filtered issues.
@@ -283,7 +288,8 @@ class VulnhallaUI(App):
             direction = "↑" if self.sort_ascending else "↓"
             sort_indicator = f" | Sorted by: {self.sort_column} {direction}"
         count_widget.update(f"Showing {len(self.filtered_issues)} of {len(self.issues)} issues{sort_indicator}")
-    
+
+
     def on_data_table_header_selected(self, event: DataTable.HeaderSelected) -> None:
         """
         Handle column header click for sorting.
@@ -311,7 +317,8 @@ class VulnhallaUI(App):
         
         # Re apply filters (which will apply sorting) and update table
         self.apply_filters()
-    
+
+
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         """
         Handle issue selection in the table.
@@ -336,7 +343,8 @@ class VulnhallaUI(App):
                 table.refresh()
             except:
                 pass
-    
+
+
     def action_select_issue(self) -> None:
         """
         Action to select the currently highlighted issue and show details.
@@ -349,7 +357,8 @@ class VulnhallaUI(App):
             self.update_details_panel()
             # Trigger the row selection to highlight it
             table.action_select_cursor()
-    
+
+
     def _escape_code_for_markup(self, code: str) -> str:
         """
         Escape Rich markup characters in code to prevent interpretation.
@@ -361,7 +370,8 @@ class VulnhallaUI(App):
             str: Escaped code string with Rich markup characters escaped.
         """
         return code.replace('[', '\\[').replace(']', '\\]').replace('{', '\\{').replace('}', '\\}')
-    
+
+
     def update_details_panel(self) -> None:
         """
         Update the details panel with selected issue information.
@@ -382,9 +392,6 @@ class VulnhallaUI(App):
         manual_decision_container.styles.display = "block"
         
         issue = self.selected_issue
-        
-        # Maximum lines to display to prevent crashes
-        MAX_LINES = 10000
         
         # Build details text parts
         details_parts = []
@@ -423,14 +430,14 @@ class VulnhallaUI(App):
             details_parts.append("(No code available)")
         else:
             # Helper function to render code with highlighting
-            def render_code_block(code: str, start_line_offset: int = 0) -> tuple[list[str], Optional[int]]:
+            def render_code_block(code: str, to_highlight: bool = True) -> tuple[list[str], Optional[int]]:
                 """
                 Render a code block with highlighting.
 
                 Args:
                     code (str): Code block to render.
-                    start_line_offset (int): Line offset (unused, kept for compatibility).
-
+                    to_highlight (bool): Whether to highlight the line number of the location.
+                    
                 Returns:
                     tuple[list[str], Optional[int]]: Tuple of (rendered_lines, highlight_index).
                 """
@@ -453,7 +460,7 @@ class VulnhallaUI(App):
                 rendered_lines = []
                 for idx, line in enumerate(code_lines):
                     escaped = self._escape_code_for_markup(line)
-                    if highlight_idx is not None and idx == highlight_idx:
+                    if highlight_idx is not None and idx == highlight_idx and to_highlight:
                         rendered_lines.append(f"[bold red]{escaped}[/bold red]")
                     else:
                         rendered_lines.append(escaped)
@@ -463,7 +470,7 @@ class VulnhallaUI(App):
             if initial_code:
                 details_parts.append("Initial Code Context:")
                 details_parts.append("")
-                initial_lines, _ = render_code_block(initial_code)
+                initial_lines, _ = render_code_block(initial_code, to_highlight=True)
                 details_parts.extend(initial_lines)
                 details_parts.append("")
             
@@ -473,7 +480,7 @@ class VulnhallaUI(App):
                 details_parts.append("")
                 
                 for additional_block in additional_code_list:
-                    additional_lines, _ = render_code_block(additional_block)
+                    additional_lines, _ = render_code_block(additional_block, to_highlight=False)
                     details_parts.extend(additional_lines)
                     # Add separator between code blocks
                     if additional_block != additional_code_list[-1]:
@@ -522,7 +529,8 @@ class VulnhallaUI(App):
         manual_decision_select.value = current_value
         # Reset flag after a brief moment
         self.set_timer(0.1, lambda: setattr(self, '_updating_manual_decision_select', False))
-    
+
+
     def on_select_changed(self, event: Select.Changed) -> None:
         """
         Handle filter selection change and manual decision selection.
@@ -543,7 +551,8 @@ class VulnhallaUI(App):
                 
                 # Update the table
                 self.update_issues_table(preserve_row_key=self.selected_issue.id)
-    
+
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """
         Handle button clicks.
@@ -555,14 +564,16 @@ class VulnhallaUI(App):
             self.load_issues()
         elif event.button.id == "run-analysis-btn":
             self.notify("Run analysis from command line: python examples/example.py", severity="info")
-    
+
+
     def action_search(self) -> None:
         """
         Focus the search input.
         """
         search_input = self.query_one("#issues-search", Input)
         search_input.focus()
-    
+
+
     def action_clear_search(self) -> None:
         """
         Clear search query and return focus to issues table.
@@ -573,14 +584,16 @@ class VulnhallaUI(App):
         self.apply_filters()
         # Return focus to the issues table
         self.query_one("#issues-table", DataTable).focus()
-    
+
+
     def action_reload(self) -> None:
         """
         Reload issues from disk.
         """
         self.load_issues()
         self.notify("Reloaded issues", severity="success")
-    
+
+
     def _update_split_position(self) -> None:
         """
         Update CSS widths for both panels based on split_position.
@@ -600,14 +613,16 @@ class VulnhallaUI(App):
         """
         self.split_position = max(0.2, self.split_position - 0.05)  # Minimum 20% for right panel
         self._update_split_position()
-    
+
+
     def action_resize_right(self) -> None:
         """
         Resize split to give more space to right panel (details).
         """
         self.split_position = min(0.8, self.split_position + 0.05)  # Maximum 80% for right panel
         self._update_split_position()
-    
+
+
     def on_input_changed(self, event: Input.Changed) -> None:
         """
         Handle search input changes - update search in real-time.
@@ -618,7 +633,7 @@ class VulnhallaUI(App):
         if event.input.id == "issues-search":
             self.search_query = event.value
             self.apply_filters()
-    
+
 
     def get_actions(self):
         """
@@ -636,13 +651,15 @@ class VulnhallaUI(App):
                 if hasattr(action, 'id') and action.id not in ("minimize", "maximize")
             ]
         return actions or []
-    
+
+
     def action_minimize(self) -> None:
         """
         Override to prevent minimize from appearing in command palette.
         """
         pass
-    
+
+
     def action_maximize(self) -> None:
         """
         Override to prevent maximize from appearing in command palette.

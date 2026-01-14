@@ -52,6 +52,7 @@ class CodeQLDBLookup:
         except (FileNotFoundError, PermissionError, OSError) as e:
             raise self._convert_csv_file_error(e, file_path, file_type_name) from e
 
+
     @staticmethod
     def _convert_csv_file_error(
         error: Exception,
@@ -80,6 +81,7 @@ class CodeQLDBLookup:
         else:
             # Fallback for unexpected exception types
             return CodeQLError(f"Error reading {file_type_name}: {file_path_str}")
+
 
     def get_function_by_line(
         self,
@@ -112,6 +114,7 @@ class CodeQLDBLookup:
                     if start <= line <= end:
                         return row_dict
         return None
+
 
     def get_function_by_name(
             self,
@@ -170,6 +173,7 @@ class CodeQLDBLookup:
                 )
                 return err, None
 
+
     def get_macro(
         self,
         curr_db: str,
@@ -214,6 +218,7 @@ class CodeQLDBLookup:
                 f"Macro '{macro_name}' not found. Make sure you're using the correct tool "
                 "with correct args."
             )
+
 
     def get_global_var(
         self,
@@ -260,6 +265,7 @@ class CodeQLDBLookup:
                 f"Global var '{global_var_name}' not found. "
                 "Could it be a macro or should you use another tool?"
             )
+
 
     def get_class(
         self,
@@ -309,6 +315,7 @@ class CodeQLDBLookup:
         else:
             return f"Class '{class_name}' not found. Could it be a Namespace?"
 
+
     def get_caller_function(
         self,
         function_tree_file: str,
@@ -353,6 +360,7 @@ class CodeQLDBLookup:
             "Make sure you are using the correct tool with the correct args."
         )
 
+
     def extract_function_lines_from_db(
         self,
         db_path: str,
@@ -381,6 +389,7 @@ class CodeQLDBLookup:
         end_line = int(current_function["end_line"])
         return file_path, start_line, end_line, lines
 
+
     @staticmethod
     def format_numbered_snippet(file_path: str, start_line: int, snippet_lines: List[str]) -> str:
         """
@@ -395,6 +404,6 @@ class CodeQLDBLookup:
             str: Formatted snippet with line numbers.
         """
         snippet = "\n".join(
-            f"{start_line - 1 + i}: {text}" for i, text in enumerate(snippet_lines)
+            f"{start_line + i}: {text}" for i, text in enumerate(snippet_lines)
         )
         return f"file: {file_path}\n{snippet}"
