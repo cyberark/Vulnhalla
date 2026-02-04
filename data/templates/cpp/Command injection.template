@@ -1,0 +1,5 @@
+1. Is the input actually controlled by an external user (e.g., network input, file content, environment variable)?
+2. Does the data flow from the source to the sink without proper sanitization or validation?
+3. Are there any input validation checks (length limits, character whitelists, escaping) before the command execution?
+4. Could an attacker inject shell metacharacters like ; | & ` $ ( ) to execute arbitrary commands?
+5. Is the command execution wrapped in any sandboxing or privilege-dropping mechanism?

@@ -45,3 +45,32 @@ def get_github_token() -> Optional[str]:
     """
     return os.getenv("GITHUB_TOKEN")
 
+
+def get_github_api_url() -> str:
+    """
+    Get GitHub API base URL from .env file or environment variables.
+    
+    Supports both github.com and GitHub Enterprise Server.
+    
+    Returns:
+        GitHub API base URL. Defaults to "https://api.github.com" for github.com.
+        For GitHub Enterprise: "https://github.example.com/api/v3"
+    """
+    url = os.getenv("GITHUB_API_URL", "https://api.github.com")
+    # Remove trailing slash for consistent URL construction
+    return url.rstrip("/")
+
+
+def get_github_ssl_verify() -> bool:
+    """
+    Get GitHub SSL verification setting from .env file or environment variables.
+    
+    For GitHub Enterprise with self-signed or internal CA certificates,
+    set GITHUB_SSL_VERIFY=false to disable certificate verification.
+    
+    Returns:
+        True to verify SSL certificates (default), False to skip verification.
+    """
+    value = os.getenv("GITHUB_SSL_VERIFY", "true").lower()
+    return value not in ("false", "0", "no", "off")
+

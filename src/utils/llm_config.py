@@ -133,10 +133,20 @@ def load_llm_config() -> Dict[str, Any]:
         api_key = os.getenv("COHERE_API_KEY") or os.getenv("CO_API_KEY")
     
     elif provider == "bedrock":
-        # Bedrock uses AWS credentials
-        api_key = os.getenv("AWS_ACCESS_KEY_ID")
-        aws_secret = os.getenv("AWS_SECRET_ACCESS_KEY")
+        # Bedrock supports multiple authentication methods:
+        # 1. AWS SSO via profile (recommended): AWS_PROFILE
+        # 2. Static credentials: AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY
+        # 3. Temporary credentials: Above + AWS_SESSION_TOKEN
+        aws_profile = os.getenv("AWS_PROFILE")
         aws_region = os.getenv("AWS_REGION_NAME", "us-east-1")
+        
+        if aws_profile:
+            # Profile-based auth (SSO, IAM roles) - SDK handles credential resolution
+            api_key = "bedrock_profile_auth"
+        else:
+            # Static or temporary credentials
+            api_key = os.getenv("AWS_ACCESS_KEY_ID")
+        
         # Store region in endpoint field for Bedrock
         endpoint = aws_region
     
@@ -174,10 +184,20 @@ def load_llm_config() -> Dict[str, Any]:
     if api_version:
         config["api_version"] = api_version
     
-    # Special handling for Bedrock (store AWS region and secret)
+    # Special handling for Bedrock (store AWS credentials and profile)
     if provider == "bedrock":
-        config["aws_secret_access_key"] = os.getenv("AWS_SECRET_ACCESS_KEY")
         config["aws_region"] = endpoint  # Store region in endpoint field
+        
+        # Profile-based authentication (AWS SSO, IAM roles)
+        aws_profile = os.getenv("AWS_PROFILE")
+        if aws_profile:
+            config["aws_profile"] = aws_profile
+        else:
+            # Static or temporary credentials
+            config["aws_secret_access_key"] = os.getenv("AWS_SECRET_ACCESS_KEY")
+            aws_session_token = os.getenv("AWS_SESSION_TOKEN")
+            if aws_session_token:
+                config["aws_session_token"] = aws_session_token
     
     # Special handling for Vertex AI (store GCP project/location if provided)
     if provider == "vertex_ai":

@@ -261,14 +261,23 @@ class LLMAnalyzer:
             if self.config.get("api_version"):
                 os.environ["AZURE_API_VERSION"] = self.config["api_version"]
         
-        # Handle Bedrock (uses AWS credentials)
+        # Handle Bedrock (uses AWS credentials or profile)
         elif provider == "bedrock":
-            if api_key:
-                os.environ["AWS_ACCESS_KEY_ID"] = api_key
-            if self.config.get("aws_secret_access_key"):
-                os.environ["AWS_SECRET_ACCESS_KEY"] = self.config["aws_secret_access_key"]
+            # Set region (always required)
             if self.config.get("endpoint"):  # Endpoint contains AWS region
                 os.environ["AWS_REGION_NAME"] = self.config["endpoint"]
+            
+            # Profile-based authentication (AWS SSO, IAM roles)
+            if self.config.get("aws_profile"):
+                os.environ["AWS_PROFILE"] = self.config["aws_profile"]
+            else:
+                # Static or temporary credentials
+                if api_key and api_key != "bedrock_profile_auth":
+                    os.environ["AWS_ACCESS_KEY_ID"] = api_key
+                if self.config.get("aws_secret_access_key"):
+                    os.environ["AWS_SECRET_ACCESS_KEY"] = self.config["aws_secret_access_key"]
+                if self.config.get("aws_session_token"):
+                    os.environ["AWS_SESSION_TOKEN"] = self.config["aws_session_token"]
         
         # Handle Vertex AI (uses GCP credentials)
         elif provider == "vertex_ai":
@@ -423,14 +432,28 @@ class LLMAnalyzer:
         while not got_answer:
             # Send the current messages + tools to the LLM endpoint
             try:
-                response = litellm.completion(
-                    model=self.model,
-                    messages=messages,
-                    tools=self.tools,
-                    temperature=temperature,
-                    top_p=top_p,
-                    timeout=120  # 2 minute timeout to prevent hanging
+                # Build completion kwargs - Bedrock Claude doesn't allow both temperature and top_p
+                completion_kwargs = {
+                    "model": self.model,
+                    "messages": messages,
+                    "tools": self.tools,
+                    "timeout": 120  # 2 minute timeout to prevent hanging
+                }
+                
+                # Check if using Bedrock (model starts with "bedrock/" or contains "arn:aws:bedrock")
+                is_bedrock = (
+                    self.model and 
+                    (self.model.startswith("bedrock/") or "arn:aws:bedrock" in self.model)
                 )
+                
+                if is_bedrock:
+                    # Bedrock Claude only accepts temperature OR top_p, not both
+                    completion_kwargs["temperature"] = temperature
+                else:
+                    completion_kwargs["temperature"] = temperature
+                    completion_kwargs["top_p"] = top_p
+                
+                response = litellm.completion(**completion_kwargs)
             except litellm.RateLimitError as e:
                 raise LLMApiError(f"Rate limit exceeded for LLM API: {e}") from e
             except litellm.Timeout as e:
