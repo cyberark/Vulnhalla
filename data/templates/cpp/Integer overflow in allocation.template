@@ -1,0 +1,5 @@
+1. Is the size value actually controlled by an external user?
+2. Can the arithmetic operation (multiplication, addition) overflow before the allocation?
+3. Are there any bounds checks on the user input before it's used in the size calculation?
+4. What data type is used for the size calculation (int, size_t, unsigned)?
+5. If an overflow occurs, would the allocation be undersized leading to heap overflow on use?

@@ -1,0 +1,5 @@
+1. Is the source string actually controlled by an external user?
+2. Is the destination buffer size known and fixed, and could the source exceed it?
+3. Are there any length checks (strlen, strnlen) before the copy operation?
+4. Could the unbounded copy be replaced with a bounded alternative (strncpy, strlcpy)?
+5. What is the maximum possible length of the user-controlled input?
