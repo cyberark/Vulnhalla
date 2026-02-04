@@ -200,33 +200,54 @@ def main_analyze() -> None:
     """
     CLI entry point for the complete analysis pipeline.
     
-    Expected usage: vulnhalla <org/repo> [--force] 
+    Expected usage: 
+        vulnhalla <org/repo> [--force]           # Fetch from GitHub
+        vulnhalla --local <path/to/db>           # Use local CodeQL database
     """
     parser = argparse.ArgumentParser(
         prog="vulnhalla",
         description="Vulnhalla - Automated CodeQL Analysis with LLM Classification"
     )
-    parser.add_argument("repo", help="GitHub repository in 'org/repo' format")
+    parser.add_argument("repo", nargs="?", help="GitHub repository in 'org/repo' format")
     parser.add_argument("--force", "-f", action="store_true", help="Re-download even if database exists")
+    parser.add_argument("--local", "-l", metavar="PATH", help="Path to local CodeQL database (skips GitHub fetch)")
     
     args = parser.parse_args()
     
-    if "/" not in args.repo:
-        parser.error("Repository must be in format 'org/repo'")
-    
-    analyze_pipeline(repo=args.repo, force=args.force)
+    # Validate arguments
+    if args.local:
+        # Local database mode
+        local_path = Path(args.local)
+        if not local_path.exists():
+            parser.error(f"Local database path does not exist: {args.local}")
+        analyze_pipeline(repo=None, local_db_path=str(local_path))
+    elif args.repo:
+        # GitHub fetch mode
+        if "/" not in args.repo:
+            parser.error("Repository must be in format 'org/repo'")
+        analyze_pipeline(repo=args.repo, force=args.force)
+    else:
+        parser.error("Either provide a repository (org/repo) or use --local <path>")
 
 
-def analyze_pipeline(repo: Optional[str] = None, lang: str = "c", threads: int = 16, open_ui: bool = True, force: bool = False) -> None:
+def analyze_pipeline(
+    repo: Optional[str] = None,
+    lang: str = "c",
+    threads: int = 16,
+    open_ui: bool = True,
+    force: bool = False,
+    local_db_path: Optional[str] = None
+) -> None:
     """
     Run the complete Vulnhalla pipeline: fetch, analyze, classify, and optionally open UI.
     
     Args:
-        repo: GitHub repository name (e.g., "redis/redis"). Required for fetching databases.
+        repo: GitHub repository name (e.g., "redis/redis"). Required if local_db_path not provided.
         lang: Programming language code. Defaults to "c".
         threads: Number of threads for CodeQL operations. Defaults to 16.
         open_ui: Whether to open the UI after completion. Defaults to True.
         force: If True, re-download even if database exists. Defaults to False.
+        local_db_path: Path to local CodeQL database. If provided, skips GitHub fetch.
     
     Note:
         This function catches and handles all exceptions internally, logging errors
@@ -252,8 +273,14 @@ See README.md for configuration reference.
         _log_exception_cause(e)
         sys.exit(1)
     
-    # Step 1: Fetch CodeQL databases
-    dbs_dir = step1_fetch_codeql_dbs(lang, threads, repo, force)
+    # Step 1: Fetch CodeQL databases (or use local path)
+    if local_db_path:
+        logger.info("\nStep 1: Using Local CodeQL Database")
+        logger.info("-" * 60)
+        logger.info("Database path: %s", local_db_path)
+        dbs_dir = local_db_path
+    else:
+        dbs_dir = step1_fetch_codeql_dbs(lang, threads, repo, force)
     
     # Step 2: Run CodeQL queries
     step2_run_codeql_queries(dbs_dir, lang, threads)

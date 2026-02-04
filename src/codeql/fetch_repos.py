@@ -18,7 +18,7 @@ from typing import Any, Dict, List
 from pySmartDL import SmartDL
 
 from src.utils.common_functions import read_file, write_file_text, get_all_dbs
-from src.utils.config import get_github_token
+from src.utils.config import get_github_token, get_github_api_url, get_github_ssl_verify
 from src.utils.logger import get_logger
 from src.utils.exceptions import CodeQLError, CodeQLConfigError
 
@@ -47,7 +47,7 @@ def fetch_repos_from_github_api(url: str) -> Dict[str, Any]:
         headers["Authorization"] = f'token {token}'
 
     try:
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, headers=headers, verify=get_github_ssl_verify())
         # Check for HTTP errors
         try:
             response.raise_for_status()
@@ -136,7 +136,7 @@ def validate_rate_limit(threads: int) -> None:
         CodeQLError: If network error occurs while checking rate limit.
     """
     try:
-        rate_limit = requests.get("https://api.github.com/rate_limit").json()
+        rate_limit = requests.get(f"{get_github_api_url()}/rate_limit", verify=get_github_ssl_verify()).json()
     except requests.RequestException as e:
         raise CodeQLError(f"Network error while checking GitHub rate limit: {e}") from e
     except (ValueError, json.JSONDecodeError) as e:
@@ -202,7 +202,7 @@ def custom_download(url: str, local_filename: str, max_attempts: int = 5, attemp
     start_time = time.time()
 
     try:
-        with requests.get(url, headers=headers, stream=True, timeout=300) as response:
+        with requests.get(url, headers=headers, stream=True, timeout=300, verify=get_github_ssl_verify()) as response:
             # Check for 416 Range Not Satisfiable error
             status = response.status_code
             if status == 416:
@@ -399,7 +399,7 @@ def filter_repos_by_db_and_lang(repos: List[Dict[str, Any]], lang: str) -> List[
     for repo in repos:
         try:
             db_info = fetch_repos_from_github_api(
-                f"https://api.github.com/repos/{repo['repo_name']}/code-scanning/codeql/databases"
+                f"{get_github_api_url()}/repos/{repo['repo_name']}/code-scanning/codeql/databases"
             )
         except (CodeQLConfigError, CodeQLError):
             raise
@@ -467,7 +467,7 @@ def search_top_matching_repos(max_repos: int, lang: str) -> List[Dict[str, Any]]
     while len(repos_db) < max_repos:
         # Search for top-starred repos by language
         search_url = (
-            f"https://api.github.com/search/repositories"
+            f"{get_github_api_url()}/search/repositories"
             f"?q=language:{lang}&sort=stars&order=desc&page={curr_page}"
         )
         all_repos = parse_github_search_result(search_url)

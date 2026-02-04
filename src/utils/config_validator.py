@@ -176,16 +176,41 @@ def validate_llm_config_dict(config: Dict[str, Any]) -> bool:
             raise ValueError("Azure provider requires a valid 'api_key'. Please set AZURE_OPENAI_API_KEY in your .env file with your actual API key.")
     
     elif provider == "bedrock":
-        if "api_key" not in config or not config["api_key"]:
-            raise ValueError("Bedrock provider requires 'api_key' (AWS_ACCESS_KEY_ID) in configuration")
-        if is_placeholder_api_key(config["api_key"]):
-            raise ValueError("Bedrock provider requires a valid 'api_key' (AWS_ACCESS_KEY_ID). Please set AWS_ACCESS_KEY_ID in your .env file with your actual AWS access key.")
-        if "aws_secret_access_key" not in config or not config.get("aws_secret_access_key"):
-            raise ValueError("Bedrock provider requires 'aws_secret_access_key' (AWS_SECRET_ACCESS_KEY) in configuration")
-        if is_placeholder_api_key(config.get("aws_secret_access_key")):
-            raise ValueError("Bedrock provider requires a valid 'aws_secret_access_key' (AWS_SECRET_ACCESS_KEY). Please set AWS_SECRET_ACCESS_KEY in your .env file with your actual AWS secret key.")
+        # Bedrock supports two authentication methods:
+        # 1. Profile-based (AWS SSO, IAM roles): AWS_PROFILE
+        # 2. Static/temporary credentials: AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY
+        has_profile = config.get("aws_profile")
+        has_static_creds = (
+            config.get("api_key") 
+            and config["api_key"] != "bedrock_profile_auth"
+            and config.get("aws_secret_access_key")
+        )
+        
+        if not has_profile and not has_static_creds:
+            raise ValueError(
+                "Bedrock provider requires authentication. Configure one of:\n"
+                "  1. AWS SSO/Profile: Set AWS_PROFILE (run 'aws sso login' first)\n"
+                "  2. Static credentials: Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY"
+            )
+        
+        # Validate static credentials if provided (not using profile)
+        if not has_profile:
+            if is_placeholder_api_key(config.get("api_key")):
+                raise ValueError(
+                    "Bedrock provider requires valid AWS_ACCESS_KEY_ID. "
+                    "Current value appears to be a placeholder."
+                )
+            if is_placeholder_api_key(config.get("aws_secret_access_key")):
+                raise ValueError(
+                    "Bedrock provider requires valid AWS_SECRET_ACCESS_KEY. "
+                    "Current value appears to be a placeholder."
+                )
+        
+        # Region is always required
         if "endpoint" not in config or not config["endpoint"]:
-            raise ValueError("Bedrock provider requires 'endpoint' (AWS_REGION_NAME) in configuration")
+            raise ValueError(
+                "Bedrock provider requires AWS_REGION_NAME in configuration"
+            )
     
     elif provider == "ollama":
         # Ollama uses placeholder api_key
