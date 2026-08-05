@@ -1,0 +1,11 @@
+This finding reports attacker-controlled or remote data reaching a decompression operation. Decompression is not automatically exploitable; the real source, buffering behavior, and enforced output limits determine whether a denial of service exists.
+1. Identify the exact response, archive, stream, or compressed-data source. Can a remote party, redirect target, proxy, compromised service, uploaded file, or repository content control its bytes?
+2. Show the complete flow from that source to the decompression operation, including every caller, adapter, stream transformation, and configuration merge.
+3. Does the application buffer the decompressed data in memory or consume it as a bounded stream?
+4. What exact value reaches maxContentLength, maxOutputLength, maxReadSize, or the equivalent cap? Is the effective default finite or unlimited?
+5. Is the limit enforced on compressed bytes, decompressed bytes, both, or neither? Prove this from the implementation.
+6. Demonstrate a safe local payload, its compressed size, decompressed size, expansion ratio, elapsed time, and memory impact.
+7. Can repeated or concurrent requests turn the single-operation impact into process, worker, or event-loop exhaustion?
+8. Are streaming mode, timeouts, abort handling, output-size checks, or expansion-ratio checks guaranteed on the reachable path?
+Use the tools to retrieve every caller, default configuration, helper, class, callback, and module-level binding needed to prove the effective source and limits.
+Return a vulnerability only if an attacker can reach the decompression path and cause meaningful resource exhaustion under the effective configuration. Do not report a vulnerability merely because decompression occurs.

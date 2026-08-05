@@ -12,6 +12,10 @@ class ControlsBar(Container):
     """
     Bottom horizontal bar with controls, filters, and actions.
     """
+
+    def __init__(self, language: str = "c", **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.language = language
     
     def compose(self) -> ComposeResult:
         """Compose the controls bar layout.
@@ -22,7 +26,7 @@ class ControlsBar(Container):
         with Vertical():
             # Language label only
             with Horizontal():
-                yield Static("Language: C (only language currently supported)", classes="control-label")
+                yield Static(f"Language: {self.language.upper()}", classes="control-label")
             # Filter and buttons
             with Horizontal():
                 yield Label("Filter by llm decision:", classes="control-label")

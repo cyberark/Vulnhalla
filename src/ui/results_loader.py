@@ -88,23 +88,27 @@ class ResultsLoader:
 
     def extract_status(self, content: str) -> str:
         """
-        Extract status code from LLM content.
+        Extract the final standalone status code from an LLM response.
 
         Args:
-            content (str): The LLM message content to analyze.
+            content (str): The assistant message content to analyze.
 
         Returns:
-            str: Status code - "true" (if 1337 found), "false" (if 1007 found), 
-                or "more" (otherwise).
+            str: "true" for 1337, "false" for 1007, or "more" for 7331
+                or when no explicit status code is present.
         """
         if not content:
             return "more"
-        content_lower = content.lower()
-        if "1337" in content_lower:
-            return "true"
-        elif "1007" in content_lower:
-            return "false"
-        return "more"
+
+        status_codes = re.findall(r"(?<!\d)(1337|1007|7331)(?!\d)", content)
+        if not status_codes:
+            return "more"
+
+        return {
+            "1337": "true",
+            "1007": "false",
+            "7331": "more",
+        }[status_codes[-1]]
 
 
     def parse_final_json(self, path: Path) -> Optional[List[Dict]]:
@@ -363,23 +367,19 @@ class ResultsLoader:
                 db_path = raw_data.get("db_path", "")
                 repo = self._extract_repo_from_db_path(db_path) if db_path else "unknown/unknown"
                 
-                # Extract status from final_data
+                # Extract the verdict only from the final non-empty assistant response.
+                # Never inspect system, user, or tool messages: the system prompt lists
+                # every status code and must not be mistaken for the model's verdict.
                 status = "more"
-                # Try to find status in assistant messages
                 for msg in reversed(final_data):
-                    if isinstance(msg, dict) and msg.get("role", "").lower() == "assistant":
-                        content = msg.get("content", "")
-                        if content:
-                            status = self.extract_status(content)
-                            if status != "more":
-                                break
-                # No status found in assistant messages, check all messages
-                if status == "more":
-                    for msg in reversed(final_data):
-                        if isinstance(msg, dict) and "content" in msg:
-                            status = self.extract_status(msg.get("content", ""))
-                            if status != "more":
-                                break
+                    if not isinstance(msg, dict):
+                        continue
+                    if msg.get("role", "").lower() != "assistant":
+                        continue
+                    content = msg.get("content", "")
+                    if content:
+                        status = self.extract_status(content)
+                        break
                 
                 issue = Issue(
                     id=issue_id,

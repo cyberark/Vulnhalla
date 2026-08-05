@@ -1,0 +1,11 @@
+This analysis found externally influenced data used as a filesystem path. A user-controlled path is not automatically a vulnerability; prove access outside the intended authority or directory.
+1. What exact filesystem operation uses the path: read, write, create, delete, rename, execute, archive extraction, permission change, or something else?
+2. What exact part of the path is attacker-controlled, and what is the real trust boundary?
+3. Reconstruct the final path after every join, expansion, normalization, resolve, absolute-path check, and default base directory.
+4. Can the attacker use .., an absolute path, alternate separators, symlinks, hard links, environment expansion, or encoding tricks to escape the intended location?
+5. Is containment checked after canonicalization against the correct trusted root? Can a symlink or time-of-check/time-of-use race bypass the check?
+6. What file or directory could actually be reached, and is it outside resources the attacker is already allowed to access as the same operating-system user?
+7. With what privileges does the process perform the operation, and what concrete confidentiality, integrity, availability, or code-execution impact follows?
+8. Provide a concrete input, the resolved final path, and the exact unintended operation it causes.
+Use the tools to retrieve path constructors, callers, global base-directory initialization, configuration loading, and all validation helpers.
+Return a vulnerability only if a less-trusted actor can make the process access a resource outside the intended authority with security impact. Same-user selection of an intentionally configurable path is not enough by itself.

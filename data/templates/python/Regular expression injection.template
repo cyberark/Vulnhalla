@@ -1,0 +1,11 @@
+This analysis checks whether attacker-controlled data becomes part of a regular expression. A dynamic regex is not automatically vulnerable if the value is escaped, strictly allow-listed, or only controlled by a trusted administrator.
+1. What exact value becomes the regex pattern, and where does it originate?
+2. Who can control the pattern value, and what is the real trust boundary: remote user, local user, repository author, configuration administrator, or only the process owner?
+3. Where is the pattern compiled or executed, and what exact data is matched against it?
+4. Is the attacker-controlled value passed through re.escape, converted to a literal, restricted to a strict allow-list, or validated before becoming a regex? Show the complete validation code.
+5. Can regex metacharacters such as groups, alternation, backreferences, lookarounds, or quantifiers survive the validation? Provide a concrete pattern that passes every check.
+6. Can the injected regex alter a security decision, match data it should not match, expose information, or cause denial of service? Identify the exact impact.
+7. For a denial-of-service claim, what input is matched, who controls its size/content, and is there an effective regex timeout or length cap?
+8. Provide one concrete injected pattern and matching input that reach the real sink and demonstrate the claimed behavior.
+Use the tools to retrieve the validator, its callers, the pattern-loading path, the regex execution site, and any module-level configuration involved.
+Return a vulnerability only if a less-trusted actor can inject active regex syntax that survives validation and causes a concrete security impact. If the value is made literal or comes only from an equally privileged trusted configuration source, this finding is not exploitable under that threat model.

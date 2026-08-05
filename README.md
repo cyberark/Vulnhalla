@@ -9,7 +9,7 @@ For a detailed overview of the research and motivation behind Vulnhalla, see the
 
 **[Vulnhalla: Picking the True Vulnerabilities from the CodeQL Haystack](https://www.cyberark.com/resources/threat-research-blog/vulnhalla-picking-the-true-vulnerabilities-from-the-codeql-haystack)**
 
-### Vulnhalla automates the complete security analysis pipeline:
+### Vulnhalla 2.0 automates the complete security analysis pipeline for C/C++, Python, and JavaScript:
 
 1. **Fetching repositories** of a given programming language from GitHub
 2. **Downloading** their corresponding [CodeQL](https://github.com/github/codeql) databases (if available)
@@ -127,8 +127,14 @@ poetry run vulnhalla-setup
 ### Step 5: Run the Pipeline
 
 ```bash
-# Analyze a specific repository, for example:
+# Analyze a C/C++ repository (the default):
 poetry run vulnhalla redis/redis
+
+# Analyze a Python repository:
+poetry run vulnhalla owner/repository --language python
+
+# Analyze a JavaScript repository:
+poetry run vulnhalla owner/repository --language javascript
 
 # Re-download even if database already exists
 poetry run vulnhalla redis/redis --force
@@ -150,11 +156,23 @@ If you already have a CodeQL database on disk (e.g., created manually or from a 
 **Windows (PowerShell):**
 ```powershell
 poetry run vulnhalla --local C:\path\to\my-codeql-db
+
+# Python database
+poetry run vulnhalla --local C:\path\to\python-codeql-db --language python
+
+# JavaScript database
+poetry run vulnhalla --local C:\path\to\javascript-codeql-db --language javascript
 ```
 
 **macOS / Linux:**
 ```bash
 poetry run vulnhalla --local /path/to/my-codeql-db
+
+# Python database
+poetry run vulnhalla --local /path/to/python-codeql-db --language python
+
+# JavaScript database
+poetry run vulnhalla --local /path/to/javascript-codeql-db --language javascript
 ```
 
 > **Note:** The `--local` flag expects a CodeQL **database** directory, not a source code folder. You can verify by checking that the folder contains a `codeql-database.yml` file.
@@ -162,14 +180,26 @@ poetry run vulnhalla --local /path/to/my-codeql-db
 ### Additional Commands 
 
 ```bash
-# Open UI to view existing results (without running analysis)
+# Open UI to view existing C/C++ results (without running analysis)
 poetry run vulnhalla-ui
+
+# Open existing Python results
+poetry run vulnhalla-ui --language python
+
+# Open existing JavaScript results
+poetry run vulnhalla-ui --language javascript
 
 # Validate configuration: CodeQL, LLM, Logging (without running analysis)
 poetry run vulnhalla-validate
 
-# List analyzed repositories and their issue counts
+# List analyzed C/C++ repositories and their issue counts
 poetry run vulnhalla-list
+
+# List analyzed Python repositories
+poetry run vulnhalla-list --language python
+
+# List analyzed JavaScript repositories
+poetry run vulnhalla-list --language javascript
 
 # Run example pipeline (analyzes videolan/vlc and redis/redis)
 poetry run vulnhalla-example
@@ -210,7 +240,7 @@ The UI displays a two-panel top area with a controls bar at the bottom:
 
 **Bottom Controls Bar:**
 
-- Language: C (only language currently supported)
+- Selected language: C/C++, Python, or JavaScript
 - Filter by llm desicion dropdown: All, True Positive, False Positive, Needs more Info to decide
 - Action buttons: Refresh, Run Analysis
 - Key bindings help text

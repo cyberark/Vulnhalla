@@ -1,0 +1,10 @@
+This finding reports TLS certificate verification being disabled. Test fixtures and deliberately local self-signed endpoints are not production vulnerabilities; production reachability and exposed traffic must be proven.
+1. Is rejectUnauthorized false, NODE_TLS_REJECT_UNAUTHORIZED=0, or an equivalent setting reachable in production configuration?
+2. Is the finding limited to a local test certificate, fixture, development server, or mocked transport?
+3. Show the complete caller and configuration flow from the setting to the TLS connection.
+4. Can environment variables, external configuration, plugins, or user-controlled options disable verification at runtime?
+5. What destinations, credentials, tokens, cookies, request bodies, or sensitive responses are exposed when verification is disabled?
+6. Can an attacker realistically intercept or redirect the connection in the deployment model?
+7. Is hostname verification also disabled or weakened, and are redirects or proxies involved?
+Use the tools to retrieve every caller, agent/transport constructor, configuration merge, environment binding, and test boundary needed to prove reachability.
+Return a vulnerability only if certificate validation can be disabled on a production-reachable sensitive connection. Do not report test-only use for local self-signed certificates.

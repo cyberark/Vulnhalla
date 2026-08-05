@@ -1,0 +1,11 @@
+This analysis found a regular expression structure that may cause exponential backtracking. The regex structure alone is not enough to prove a vulnerability.
+1. What is the exact regular expression, and which subexpression causes the backtracking according to the issue message?
+2. Where is this regex executed? Identify the exact match, search, split, substitute, or validation operation.
+3. What exact data is matched against the regex? Trace it to its origin and identify who can control it and across what trust boundary.
+4. What is the maximum length of the matched data before the regex runs? Prove the limit from the code. Do not assume a practical limit that is not enforced.
+5. Can the attacker construct a non-matching or late-matching input containing many repetitions of the value identified by CodeQL?
+6. How often can the attacker trigger this operation, and what process, thread, request, hook, or job is blocked while matching?
+7. Is there a regex timeout, a non-backtracking engine, strict input-length validation, or another protection that prevents meaningful resource exhaustion?
+8. Provide a concrete worst-case input and either measure or logically demonstrate how runtime grows as the input gets longer.
+Use the tools to retrieve every caller, global regex definition, class, and helper needed to prove the complete flow.
+Return a vulnerability only if attacker-controlled input of a realistically reachable size can make the regex consume meaningful CPU time or block availability. If the input is trusted, strictly bounded to a safe size, or protected by an effective timeout, it is not a security issue.

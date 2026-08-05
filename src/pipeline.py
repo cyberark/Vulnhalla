@@ -182,7 +182,7 @@ def step3_classify_results_with_llm(dbs_dir: str, lang: str) -> None:
         sys.exit(1)
 
 
-def step4_open_ui() -> None:
+def step4_open_ui(lang: str = "c") -> None:
     """
     Step 4: Open the results UI (optional).
 
@@ -193,7 +193,7 @@ def step4_open_ui() -> None:
     logger.info("-" * 60)
     logger.info("[+] Pipeline completed successfully!")
     logger.info("Opening results UI...")
-    ui_main()
+    ui_main(language=lang)
 
 
 def main_analyze() -> None:
@@ -211,6 +211,12 @@ def main_analyze() -> None:
     parser.add_argument("repo", nargs="?", help="GitHub repository in 'org/repo' format")
     parser.add_argument("--force", "-f", action="store_true", help="Re-download even if database exists")
     parser.add_argument("--local", "-l", metavar="PATH", help="Path to local CodeQL database (skips GitHub fetch)")
+    parser.add_argument(
+        "--language", "--lang",
+        choices=["c", "python", "javascript"],
+        default="c",
+        help="Source language to analyze (default: c)"
+    )
     
     args = parser.parse_args()
     
@@ -220,12 +226,12 @@ def main_analyze() -> None:
         local_path = Path(args.local)
         if not local_path.exists():
             parser.error(f"Local database path does not exist: {args.local}")
-        analyze_pipeline(repo=None, local_db_path=str(local_path))
+        analyze_pipeline(repo=None, local_db_path=str(local_path), lang=args.language)
     elif args.repo:
         # GitHub fetch mode
         if "/" not in args.repo:
             parser.error("Repository must be in format 'org/repo'")
-        analyze_pipeline(repo=args.repo, force=args.force)
+        analyze_pipeline(repo=args.repo, force=args.force, lang=args.language)
     else:
         parser.error("Either provide a repository (org/repo) or use --local <path>")
 
@@ -290,17 +296,25 @@ See README.md for configuration reference.
     
     # Step 4: Open UI (optional)
     if open_ui:
-        step4_open_ui()
+        step4_open_ui(lang)
 
 
 def main_ui() -> None:
     """
     CLI entry point to open the UI without running analysis.
     
-    Expected usage: vulnhalla-ui
+    Expected usage: vulnhalla-ui [--language c|python|javascript]
     """
+    parser = argparse.ArgumentParser(prog="vulnhalla-ui")
+    parser.add_argument(
+        "--language", "--lang",
+        choices=["c", "python", "javascript"],
+        default="c",
+        help="Results language to display (default: c)"
+    )
+    args = parser.parse_args()
     logger.info("Opening Vulnhalla UI...")
-    ui_main()
+    ui_main(language=args.language)
 
 
 def main_validate() -> None:
@@ -328,6 +342,15 @@ def main_list() -> None:
     Expected usage: vulnhalla-list
     """
     from src.ui.results_loader import ResultsLoader
+
+    parser = argparse.ArgumentParser(prog="vulnhalla-list")
+    parser.add_argument(
+        "--language", "--lang",
+        choices=["c", "python", "javascript"],
+        default="c",
+        help="Results language to list (default: c)"
+    )
+    args = parser.parse_args()
     
     results_dir = Path("output/results")
     if not results_dir.exists():
@@ -336,9 +359,7 @@ def main_list() -> None:
     
     loader = ResultsLoader()
     
-    # Currently only 'c' language is supported
-    lang = "c"
-    issues, _ = loader.load_all_issues(lang)
+    issues, _ = loader.load_all_issues(args.language)
     
     if not issues:
         logger.info("No analyzed repositories found.")

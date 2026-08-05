@@ -1,0 +1,11 @@
+This analysis found a fully influenced URL used in an outbound request. A configurable endpoint is not automatically SSRF; identify who controls it and whether the process has network authority the controller does not already have.
+1. What request API is called, and what exact URL, method, headers, body, redirect policy, proxy settings, and timeout are used?
+2. What exact source controls the URL, and what is the real trust boundary: remote request, repository content, local environment, command-line argument, or trusted administrator configuration?
+3. Which URL components are controllable: scheme, host, port, path, query, credentials, and fragment?
+4. Are schemes, hosts, ports, IP ranges, or destinations allow-listed? Are redirects revalidated at every hop?
+5. Can DNS rebinding, alternate IP notation, IPv6, localhost aliases, redirects, or hostname resolution reach loopback, private networks, cloud metadata, or another protected service?
+6. Does the request carry credentials, authentication headers, cookies, client certificates, or other authority that would be exposed to the selected destination?
+7. Can the attacker observe the response, infer it through side effects, or use a blind request to modify internal state?
+8. Provide a concrete attacker-controlled URL and identify the otherwise inaccessible resource and resulting impact.
+Use the tools to retrieve all callers, URL construction, environment/configuration initialization, HTTP client wrappers, and validation functions.
+Return a vulnerability only if a less-trusted attacker can make the process use its greater network or credential authority to access an unintended resource. An endpoint override controlled only by the same trusted process administrator is not SSRF under the normal threat model.

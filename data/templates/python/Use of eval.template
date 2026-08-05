@@ -1,0 +1,10 @@
+This analysis found a call to Python eval. The presence of eval is dangerous only when an attacker can influence the evaluated expression or its execution environment.
+1. What exact expression value reaches eval, and where is that value initialized?
+2. Who can influence the expression, directly or indirectly, and across what trust boundary?
+3. What transformations, parsing, validation, allow-listing, quoting, or character restrictions are applied before eval?
+4. Could ast.literal_eval or another non-executing parser be used instead, and is the current validation actually equivalent to one?
+5. What globals and locals are supplied to eval? Are __builtins__, imports, functions, objects, or other useful capabilities reachable?
+6. With what process privileges and access does the evaluated code run?
+7. Provide a concrete payload that survives every validation step and reaches eval through the real caller flow.
+Use the tools to retrieve all callers, parsing helpers, global configuration, and classes needed to prove the complete source-to-eval path.
+Return a vulnerability only if a less-trusted actor can make eval execute an unintended Python expression with security impact. If the expression is a fixed trusted constant or is strictly converted to non-executable literal data, it is not exploitable.

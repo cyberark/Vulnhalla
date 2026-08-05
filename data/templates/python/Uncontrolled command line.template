@@ -1,0 +1,11 @@
+This analysis found externally influenced data in a command invocation. This may be shell injection, argument injection, executable selection, or a safe use of a fixed executable with data-only arguments.
+1. What exact API executes the command, and what are the final executable, argument list, environment, working directory, and shell settings?
+2. Is shell=True used, or is a command string passed to a shell? If yes, show exactly where attacker-controlled characters enter that string.
+3. If shell=False and an argument list is used, can attacker input still add command options, change subcommands, select files with dangerous meanings, or otherwise alter program behavior?
+4. Is the executable path fixed and trusted, or can PATH, the executable name, cwd, or environment cause a different program to run?
+5. What exact source controls each relevant command component, and what is the trust boundary?
+6. What validation, allow-listing, option termination such as --, quoting, or canonicalization is applied? Verify whether the protection is appropriate for the actual execution API.
+7. With what privileges does the process run, and what concrete security impact results from changing the command semantics?
+8. Provide a concrete attacker-controlled value and show the exact resulting argv or shell command that proves exploitation.
+Use the tools to retrieve all callers, command builders, configuration globals, and helper functions needed to reconstruct the final invocation.
+Return a vulnerability only if a less-trusted attacker can change command semantics or select an unintended executable with security impact. A fixed executable receiving a validated data argument through shell=False is not command injection by itself.

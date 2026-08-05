@@ -1,0 +1,11 @@
+This finding reports data being incorporated into a regular-expression pattern. Dynamic RegExp construction is not automatically exploitable; the pattern source, escaping, matched input, and reachable runtime behavior must be proven.
+1. Trace the complete source of every interpolated pattern component; distinguish remote input, repository configuration, plugins, environment values, and trusted application configuration.
+2. Show the complete flow from the source to the exact RegExp constructor or compilation operation.
+3. Are regular-expression metacharacters escaped before construction? Identify the exact escaping function and prove it covers all relevant characters.
+4. Identify the attacker-controlled or environmental string matched by the expression and every enforced length bound.
+5. Can the attacker construct a pattern that changes matching semantics, bypasses validation, or creates catastrophic backtracking? Provide a concrete pattern and input pair.
+6. Measure timings at increasing input lengths to prove or disprove exponential or polynomial growth.
+7. Confirm the behavior through the complete caller path, not only by testing a detached regular expression.
+8. What process, request worker, browser event loop, build task, or hook is blocked, and how often can the operation be triggered?
+Use the tools to retrieve all callers, configuration defaults, imports, globals, object implementations, and helper functions needed to establish the real trust boundary.
+Return a vulnerability only if an attacker can influence the pattern or its dangerous components and produce a meaningful security impact. Do not report a vulnerability solely because new RegExp receives a non-literal value.

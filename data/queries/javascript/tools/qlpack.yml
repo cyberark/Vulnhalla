@@ -1,0 +1,4 @@
+name: vulnhalla/javascript-tools
+version: 0.0.0
+dependencies:
+  codeql/javascript-all: "*"

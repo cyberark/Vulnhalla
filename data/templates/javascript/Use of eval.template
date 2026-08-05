@@ -1,0 +1,11 @@
+This finding reports a call to JavaScript eval. The presence of eval is dangerous only when a less-trusted actor can influence the evaluated source or its execution environment.
+1. What exact string or value reaches eval, and where is it initialized?
+2. Who can influence that value directly or indirectly, and across what trust boundary?
+3. Show the complete flow from the source to eval, including callers, callbacks, configuration merges, serialization, and decoding.
+4. What validation, allow-listing, parsing, quoting, escaping, or character restrictions are applied before evaluation?
+5. Can the attacker break out of the intended expression or data format? Provide a concrete payload that survives every protection.
+6. Is this direct eval or indirect eval, and what local scope, globals, imports, functions, objects, DOM capabilities, filesystem access, or network access are available?
+7. With what process or browser privileges does the evaluated code run?
+8. Could JSON.parse, a fixed dispatch table, a safe expression parser, or another non-executing mechanism replace eval?
+Use the tools to retrieve every caller, parsing helper, callback, class, global configuration, and imported implementation needed to prove the complete source-to-eval path.
+Return a vulnerability only if a less-trusted actor can make eval execute unintended JavaScript with security impact. Do not report fixed trusted constants, generated build code, or test-only use as an exploitable production vulnerability.

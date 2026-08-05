@@ -1,0 +1,11 @@
+This finding reports user-controlled data reaching a server-side network request. A dynamic URL is not automatically SSRF; the final destination, normalization, redirects, DNS behavior, and credential forwarding must be proven.
+1. Who controls the request URL, baseURL, path components, proxy settings, redirect targets, and DNS resolution?
+2. Show the complete flow from the external source to the exact network-request operation.
+3. Compute the final URL actually sent on the wire after base URL combination, URL parsing, encoding, proxy handling, and redirects.
+4. Can an absolute URL override or bypass an intended base destination or allowlist?
+5. Are loopback, private, link-local, cloud-metadata, file, alternate-scheme, and IPv6-transition destinations blocked after normalization and after each redirect?
+6. Is validation applied to the resolved IP address, and is DNS rebinding considered?
+7. Can credentials, cookies, authorization headers, proxy credentials, or other sensitive headers be forwarded to an attacker-selected host?
+8. Is allowAbsoluteUrls false, or is the integrating application incorrectly relying on baseURL as a destination allowlist?
+Use the tools to retrieve every caller, URL builder, redirect handler, proxy helper, configuration default, and module-level binding needed to prove the final destination and privileges.
+Return a vulnerability only if an attacker can influence the destination and reach a security-sensitive network resource or exfiltrate sensitive data. Do not report expected HTTP-client behavior without a real trust-boundary violation.
