@@ -1,0 +1,11 @@
+This analysis found uncontrolled data reaching a regular expression with polynomial worst-case behavior. Polynomial behavior is not automatically exploitable; the reachable input size and execution context are critical.
+1. What is the exact regex and which repeated or ambiguous part causes polynomial backtracking?
+2. What exact source reaches the regex, and who can control that source?
+3. Show the complete flow from the source to the exact regex execution operation.
+4. What is the maximum attacker-controlled input length at the sink? Prove every enforced length, line, file, request, or protocol limit from code.
+5. Can the attacker create the required worst-case non-matching or late-matching input? Provide a concrete example.
+6. How does runtime grow for increasing reachable input sizes? Measure it when possible, or explain the expected polynomial degree using the regex structure.
+7. How often can the operation be triggered, and does it block a security hook, request worker, event loop, CLI process, or other important resource?
+8. Is there a timeout, strict pre-validation, non-backtracking engine, or sufficiently small enforced input cap?
+Use the tools to retrieve all callers, helper functions, globals, and configuration initialization needed to verify the real trust boundary and limits.
+Return a vulnerability only if an attacker can supply a reachable input size that causes meaningful denial of service. Do not report a vulnerability merely because the regex has polynomial theoretical complexity.

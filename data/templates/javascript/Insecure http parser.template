@@ -1,0 +1,10 @@
+This finding reports use of Node.js's insecure HTTP parser. The option is dangerous but not automatically a vulnerability; it must be reachable in a meaningful deployment and exposed to attacker-controlled malformed traffic.
+1. Is insecureHTTPParser enabled in production, or only in tests, fixtures, and explicit compatibility modes?
+2. Show the complete configuration flow that sets the option to true and the caller that creates the HTTP client or server.
+3. Can environment variables, user input, repository configuration, plugins, or remote configuration enable it at runtime?
+4. Can an attacker control the peer or the malformed HTTP request or response processed by this parser?
+5. Does the deployment include proxies, caches, load balancers, or other intermediaries that may interpret malformed messages differently?
+6. Reproduce the exact malformed input with both the default and insecure parser settings and record the behavioral difference.
+7. Can the parser difference produce request smuggling, response splitting, cache poisoning, authentication bypass, or cross-user impact in the actual deployment?
+Use the tools to retrieve all callers, configuration defaults, option merges, adapters, and environment bindings needed to establish production reachability.
+Return a vulnerability only if the insecure parser is reachable in a real security boundary and attacker-controlled malformed traffic produces meaningful impact. Do not report an explicitly enabled test-only option as a production vulnerability.

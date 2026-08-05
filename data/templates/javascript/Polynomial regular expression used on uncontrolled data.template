@@ -1,0 +1,12 @@
+This finding reports uncontrolled data being matched by a regular expression with polynomial worst-case behavior. The regex structure alone is not enough to prove denial of service; the actual execution path, reachable input length, and runtime growth must be established.
+1. What is the exact regular expression, and which repeated, overlapping, or ambiguous term causes polynomial backtracking?
+2. What exact source reaches the matched string, and who can control that source?
+3. Show the complete flow from the source to the exact regex execution operation and retrieve the surrounding function or callback.
+4. Is the flagged regex branch actually reachable for ordinary strings, or is a faster native method or guard always selected first?
+5. What is the maximum attacker-controlled input length at the sink? Prove every request, header, line, file, protocol, or application limit from code.
+6. Can the attacker create the required non-matching or late-matching worst-case string? Provide a concrete example.
+7. Measure runtime at increasing reachable input lengths, or explain the expected polynomial degree from the regex structure.
+8. How often can the operation be triggered, and does it block an event loop, request worker, CLI process, build task, or other important resource?
+9. Is there a timeout, strict pre-validation, non-backtracking engine, native fast path, or sufficiently small enforced input cap?
+Use the tools to retrieve all callers, helper functions, globals, object implementations, and configuration initialization needed to verify reachability and limits.
+Return a vulnerability only if an attacker can supply a reachable input size that causes meaningful denial of service. Do not report a vulnerability merely because CodeQL identifies theoretical polynomial behavior.

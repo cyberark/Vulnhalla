@@ -28,12 +28,16 @@ class LLMAnalyzer:
     with system instructions, and ultimately produce a status code.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, language: str = "c") -> None:
         """
         Initialize the LLMAnalyzer instance and define tools and system messages.
+
+        Args:
+            language: Source language. Existing C/C++ behavior remains the default.
         """
         self.config: Optional[Dict[str, Any]] = None
         self.model: Optional[str] = None
+        self.language = language
         self.db_lookup = CodeQLDBLookup()
 
         # Tools configuration: A set of function calls the LLM can invoke
@@ -139,6 +143,53 @@ class LLMAnalyzer:
                 }
             }
         ]
+
+        if self.language == "python":
+            # Python uses the same navigation tool names. Macros do not exist in Python.
+            self.tools = self.tools[:-1]
+            self.tools[0]["function"]["description"] = (
+                "Retrieves a missing Python function or method implementation."
+            )
+            self.tools[0]["function"]["parameters"]["properties"]["function_name"]["description"] = (
+                "The function or method name. For methods, use ClassName.method_name when known."
+            )
+            self.tools[2]["function"]["description"] = (
+                "Retrieves a complete Python class implementation. If only one method is needed, "
+                "use get_function_code instead."
+            )
+            self.tools[2]["function"]["parameters"]["properties"]["object_name"]["description"] = (
+                "The Python class name, optionally module-qualified."
+            )
+            self.tools[3]["function"]["description"] = (
+                "Retrieves where a module-level Python name is initialized or imported."
+            )
+            self.tools[3]["function"]["parameters"]["properties"]["global_var_name"]["description"] = (
+                "The module-level name to retrieve, optionally module-qualified."
+            )
+
+        elif self.language == "javascript":
+            # JavaScript uses the same human-navigation tools as Python; imports,
+            # callbacks, and module bindings are resolved internally.
+            self.tools = self.tools[:-1]
+            self.tools[0]["function"]["description"] = (
+                "Retrieves a missing JavaScript function, method, callback, or constructor implementation."
+            )
+            self.tools[0]["function"]["parameters"]["properties"]["function_name"]["description"] = (
+                "The function or method name. For methods, use ClassName.method when known."
+            )
+            self.tools[2]["function"]["description"] = (
+                "Retrieves a complete JavaScript class or prototype-based object implementation. "
+                "If only one method is needed, use get_function_code instead."
+            )
+            self.tools[2]["function"]["parameters"]["properties"]["object_name"]["description"] = (
+                "The JavaScript class or constructor name, optionally file-qualified."
+            )
+            self.tools[3]["function"]["description"] = (
+                "Retrieves where a module-level JavaScript binding is initialized."
+            )
+            self.tools[3]["function"]["parameters"]["properties"]["global_var_name"]["description"] = (
+                "The module-level JavaScript binding, optionally file-qualified."
+            )
 
         # Base system messages with instructions and guidance for the LLM
         self.MESSAGES: List[Dict[str, str]] = [
@@ -420,7 +471,7 @@ class LLMAnalyzer:
             raise RuntimeError("LLM model not initialized. Call init_llm_client() first.")
         
         got_answer = False
-        db_path_clean = db_path.replace(" ", "")
+        db_path_clean = db_path if self.language in {"python", "javascript"} else db_path.replace(" ", "")
         all_functions = functions
 
         messages: List[Dict[str, Any]] = self.MESSAGES[:]
@@ -508,11 +559,21 @@ class LLMAnalyzer:
 
                     # Evaluate which tool to call
                     if tool_function_name == 'get_function_code' and "function_name" in tool_args:
-                        child_function, parent_function = self.db_lookup.get_function_by_name(
-                            function_tree_file, tool_args["function_name"], all_functions
-                        )
+                        if self.language in {"python", "javascript"}:
+                            child_function, parent_function = self.db_lookup.get_function_by_name(
+                                function_tree_file,
+                                tool_args["function_name"],
+                                all_functions,
+                                language=self.language
+                            )
+                        else:
+                            child_function, parent_function = self.db_lookup.get_function_by_name(
+                                function_tree_file, tool_args["function_name"], all_functions
+                            )
                         if isinstance(child_function, dict):
                             all_functions.append(child_function)
+                            if self.language in {"python", "javascript"}:
+                                current_function = child_function
                         child_code = self.extract_function_from_file(db_path_clean, child_function)
                         response_msg = child_code
 
@@ -553,7 +614,17 @@ class LLMAnalyzer:
                             response_msg = macro
 
                     elif tool_function_name == 'get_global_var' and "global_var_name" in tool_args:
-                        global_var = self.db_lookup.get_global_var(db_path_clean, tool_args["global_var_name"])
+                        if self.language in {"python", "javascript"}:
+                            global_var = self.db_lookup.get_global_var(
+                                db_path_clean,
+                                tool_args["global_var_name"],
+                                language=self.language,
+                                current_function=current_function
+                            )
+                        else:
+                            global_var = self.db_lookup.get_global_var(
+                                db_path_clean, tool_args["global_var_name"]
+                            )
                         if isinstance(global_var, dict):
                             global_var_code = self.extract_function_from_file(db_path_clean, global_var)
                             response_msg = global_var_code
@@ -561,7 +632,17 @@ class LLMAnalyzer:
                             response_msg = global_var
 
                     elif tool_function_name == 'get_class' and "object_name" in tool_args:
-                        curr_class = self.db_lookup.get_class(db_path_clean, tool_args["object_name"])
+                        if self.language in {"python", "javascript"}:
+                            curr_class = self.db_lookup.get_class(
+                                db_path_clean,
+                                tool_args["object_name"],
+                                language=self.language,
+                                current_function=current_function
+                            )
+                        else:
+                            curr_class = self.db_lookup.get_class(
+                                db_path_clean, tool_args["object_name"]
+                            )
                         if isinstance(curr_class, dict):
                             class_code = self.extract_function_from_file(db_path_clean, curr_class)
                             response_msg = class_code

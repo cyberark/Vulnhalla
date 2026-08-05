@@ -670,7 +670,7 @@ class IssueAnalyzer:
         if self.config is None:
             validate_and_exit_on_error()
         
-        llm_analyzer = LLMAnalyzer()
+        llm_analyzer = LLMAnalyzer(language=self.lang)
         llm_analyzer.init_llm_client(config=self.config)
 
         # Gather issues from all DBs

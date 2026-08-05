@@ -92,6 +92,25 @@ def main() -> None:
             if result.returncode != 0:
                 logger.warning("Failed to install issues pack: %s", result.stderr)
             os.chdir(str(PROJECT_ROOT))
+
+        # Dynamic-language packs are additional; the existing C/C++ packs and setup flow are unchanged.
+        for pack_dir in (
+            PROJECT_ROOT / "data/queries/python/tools",
+            PROJECT_ROOT / "data/queries/python/issues",
+            PROJECT_ROOT / "data/queries/javascript/tools",
+            PROJECT_ROOT / "data/queries/javascript/issues",
+        ):
+            if pack_dir.exists():
+                os.chdir(str(pack_dir))
+                result = subprocess.run(
+                    [codeql_cmd, "pack", "install"],
+                    check=False,
+                    capture_output=True,
+                    text=True
+                )
+                if result.returncode != 0:
+                    logger.warning("Failed to install CodeQL pack %s: %s", pack_dir, result.stderr)
+                os.chdir(str(PROJECT_ROOT))
     else:
         logger.error("[-] CodeQL CLI not found. Skipping CodeQL pack installation.")
         logger.info("Install CodeQL CLI from: https://github.com/github/codeql-cli-binaries/releases")

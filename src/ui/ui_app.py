@@ -82,7 +82,7 @@ class VulnhallaUI(App):
         Binding("]", "resize_right", "Resize Right"),
     ]
     
-    def __init__(self) -> None:
+    def __init__(self, language: str = "c") -> None:
         """
         Initialize the VulnhallaUI application.
         """
@@ -91,7 +91,7 @@ class VulnhallaUI(App):
         self.issues: List[Issue] = []
         self.filtered_issues: List[Issue] = []
         self.selected_issue: Optional[Issue] = None
-        self.current_lang = "c"
+        self.current_lang = language
         self.current_filter = "all"
         self.search_query = ""
         self.split_position = 0.5
@@ -111,7 +111,7 @@ class VulnhallaUI(App):
                 yield IssuesListPanel(id="issues-list")
                 yield SplitterDivider(app_instance=self)
                 yield DetailsPanel(id="details")
-            yield ControlsBar(id="controls-bar")
+            yield ControlsBar(language=self.current_lang, id="controls-bar")
         yield Footer()
 
 
@@ -141,8 +141,6 @@ class VulnhallaUI(App):
         
         Displays error notifications if any files fail to load.
         """
-        self.current_lang = "c"  # Only C is currently supported
-        
         # Load issues from disk - now returns (issues, errors)
         self.issues, errors = self.loader.load_all_issues(self.current_lang)
         
@@ -172,12 +170,52 @@ class VulnhallaUI(App):
         self.apply_filters()
 
 
+    @staticmethod
+    def _issue_row_key(issue: Issue) -> str:
+        """Return a stable key that is unique across all issue directories.
+
+        CodeQL result numbering restarts for each query, so several findings can
+        legitimately have the same visible ID (for example, ``1``).  Textual's
+        ``DataTable`` requires row keys to be unique, while ``final_path`` is
+        already the unique persistent identifier used for manual decisions.
+        """
+        if issue.final_path:
+            return issue.final_path
+        return (
+            f"{issue.lang}:{issue.repo}:{issue.issue_type}:"
+            f"{issue.id}:{issue.file}:{issue.line}"
+        )
+
+
+    @staticmethod
+    def _is_blank_select_value(value: Any) -> bool:
+        """Return True for the blank Select value across Textual versions."""
+        select_null = getattr(Select, "NULL", None)
+        return value is None or (select_null is not None and value is select_null)
+
+
+    @classmethod
+    def _set_select_value(cls, select: Select, value: Optional[str]) -> None:
+        """Set or clear a Select value on Textual 0.40 and newer releases."""
+        if value is None:
+            clear = getattr(select, "clear", None)
+            if callable(clear):
+                clear()
+            else:
+                select.value = None
+        else:
+            select.value = value
+
+
     def apply_filters(self) -> None:
         """
         Apply current filter and search to issues list.
         """
         filter_select = self.query_one("#filter-select", Select)
-        self.current_filter = filter_select.value or "all"
+        filter_value = filter_select.value
+        self.current_filter = (
+            "all" if self._is_blank_select_value(filter_value) else str(filter_value)
+        )
         
         # Get search query from the persistent search input
         search_input = self.query_one("#issues-search", Input)
@@ -233,7 +271,7 @@ class VulnhallaUI(App):
         Update the issues table with current filtered issues.
 
         Args:
-            preserve_row_key (Optional[str]): Optional row key (issue ID) to preserve 
+            preserve_row_key (Optional[str]): Optional unique row key to preserve
                 cursor position after update.
         """
         table = self.query_one("#issues-table", DataTable)
@@ -260,14 +298,14 @@ class VulnhallaUI(App):
                 issue.repo,
                 issue.name[:40] + "..." if len(issue.name) > 40 else issue.name,
                 file_display,
-                key=issue.id
+                key=self._issue_row_key(issue)
             )
         
         # Restore cursor position if requested (immediately after adding all rows)
         if preserve_row_key is not None:
             # Find target row index and restore cursor
             for idx, issue in enumerate(self.filtered_issues):
-                if issue.id == preserve_row_key and idx > 0:
+                if self._issue_row_key(issue) == preserve_row_key and idx > 0:
                     # Move cursor from row 0 (after clear) to target row
                     for _ in range(idx):
                         table.action_cursor_down()
@@ -520,8 +558,8 @@ class VulnhallaUI(App):
         current_value = issue.manual_decision if issue.manual_decision else None
         # Set flag to prevent event when updating programmatically
         self._updating_manual_decision_select = True
-        # Update the select value
-        manual_decision_select.value = current_value
+        # Update the select value using a Textual-version-compatible blank value.
+        self._set_select_value(manual_decision_select, current_value)
         # Reset flag after a brief moment
         self.set_timer(0.1, lambda: setattr(self, '_updating_manual_decision_select', False))
 
@@ -541,16 +579,24 @@ class VulnhallaUI(App):
                 return
             # Update the selected issue's manual_decision
             if self.selected_issue:
-                # Update the manual_decision
-                self.selected_issue.manual_decision = event.value  # Could be None for "Not Set"
+                selected_value = (
+                    None
+                    if self._is_blank_select_value(event.value)
+                    else str(event.value)
+                )
+                self.selected_issue.manual_decision = selected_value
                 
                 # Save to disk for persistence
-                self.loader.save_manual_decision(self.selected_issue.final_path, event.value)
+                self.loader.save_manual_decision(
+                    self.selected_issue.final_path, selected_value
+                )
                 
                 # Update just the cell, not the whole table (avoids layout shifts)
                 table = self.query_one("#issues-table", DataTable)
-                manual_display = format_manual_decision(event.value)
-                row_index = table.get_row_index(self.selected_issue.id)
+                manual_display = format_manual_decision(selected_value)
+                row_index = table.get_row_index(
+                    self._issue_row_key(self.selected_issue)
+                )
                 # Column 2 is "Manual decision" (0=ID, 1=LLM decision, 2=Manual decision)
                 table.update_cell_at((row_index, 2), manual_display)
 
@@ -669,11 +715,11 @@ class VulnhallaUI(App):
         pass
 
 
-def main() -> None:
+def main(language: str = "c") -> None:
     """
     Entry point for running the UI.
     """
-    app = VulnhallaUI()
+    app = VulnhallaUI(language=language)
     app.run()
 
 

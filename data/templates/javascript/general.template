@@ -1,0 +1,4 @@
+1. Is attacker-controlled data able to reach the dangerous operation?
+2. What validation, sanitization, allow-listing, or other protection is applied first?
+3. Is this a real security issue that can be exploited?
+Use the tools to retrieve any called function, caller, class, prototype, callback, or module-level binding needed to answer.

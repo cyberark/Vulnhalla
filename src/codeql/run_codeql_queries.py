@@ -20,6 +20,7 @@ from src.utils.common_functions import get_all_dbs
 from src.utils.config import get_codeql_path
 from src.utils.logger import get_logger
 from src.utils.exceptions import CodeQLError, CodeQLConfigError, CodeQLExecutionError
+from src.codeql.javascript_navigation import finalize_javascript_navigation
 
 logger = get_logger(__name__)
 
@@ -310,9 +311,16 @@ def compile_and_run_codeql_queries(
                 logger.warning("Cannot access database folder '%s'. Skipping.", curr_db)
                 continue
         
-        # If issues.csv was not generated yet, or FunctionTree.csv missing, run
-        if (not (curr_db_path / "FunctionTree.csv").exists() or
-                not (curr_db_path / "issues.csv").exists()):
+        # C/C++ keeps its original completion check. Python also requires its binding indexes.
+        required_outputs = ["FunctionTree.csv", "issues.csv"]
+        if lang == "python":
+            required_outputs.extend(["Classes.csv", "GlobalVars.csv", "Imports.csv"])
+        elif lang == "javascript":
+            required_outputs.extend(
+                ["Classes.csv", "GlobalVars.csv", "Imports.csv", "Calls.csv", "Bindings.csv"]
+            )
+
+        if any(not (curr_db_path / output).exists() for output in required_outputs):
             logger.info("Processing DB: %s", curr_db)
             run_queries_on_db(
                 curr_db,
@@ -324,6 +332,11 @@ def compile_and_run_codeql_queries(
             )
         else:
             logger.info("Output files already exist for this DB, skipping...")
+
+        if lang == "javascript" and all(
+            (curr_db_path / output).exists() for output in required_outputs
+        ):
+            finalize_javascript_navigation(curr_db_path)
 
     logger.info("[+] done!")
 

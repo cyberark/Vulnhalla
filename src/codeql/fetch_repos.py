@@ -588,6 +588,9 @@ def fetch_codeql_dbs(
         CodeQLError: If directory creation, download, or extraction fails.
         CodeQLConfigError: On 4xx client errors (invalid token, permissions, etc.).
     """
+    global LANG
+    LANG = lang
+
     # Ensure needed directories exist
     db_folder_path = Path("output/databases") / lang
     try:
